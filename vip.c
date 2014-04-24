@@ -88,6 +88,9 @@ __section__(".data.cacheline_aligned")))
 #define __read_mostly __attribute__((__section__(".data.read_mostly")))
 
 pthread_mutex_t raw_mutex = PTHREAD_MUTEX_INITIALIZER;
+uint32_t verbose = 0;
+uint32_t counter = 0;
+uint32_t counter_total = 0;
 
 typedef struct
 {
@@ -498,11 +501,25 @@ static void *thr_tx(void *threadid)
 	if (compression) {
 	    compressedsz = MAXPAYLOAD*2;
 	    ret = lzo1x_1_compress(payloadptr, payloadsz, compressed, (lzo_uintp)&compressedsz, wrkmem);
+	    /* Not thread safe! TODO */
+	    if (verbose) {
+		counter = compressedsz;
+	    }
 
 	    /* Adaptive compression */
 	    if (compressedsz >= payloadsz || compressedsz > MAXPAYLOAD) {
 		compressedsz = 0;
 	    } else {
+		if (verbose) {
+		    counter += payloadsz - compressedsz;
+		    counter_total += payloadsz;
+		    if (counter_total > 1024*1024*50) {
+			printf("Total %d compresseddiff %d\n", counter_total, counter);
+			counter_total = 0;
+			counter = 0;
+		    }
+		}
+
 		ip[1] |= BIT_COMPRESSED;
 		memcpy(payloadptr,compressed,compressedsz);
 		payloadsz = compressedsz;
@@ -547,13 +564,14 @@ int main(int argc,char **argv)
                {"protocol",  required_argument, 0, 'p'},
                {"config",  required_argument, 0, 'c'},
                {"bind",  required_argument, 0, 'b'},
+               {"verbose",  no_argument, 0, 'v'},
                {"help",  no_argument, 0, 'h'},
                {0, 0, 0, 0}
              };
            /* getopt_long stores the option index here. */
 	    int option_index = 0;
      
-	    c = getopt_long (argc, argv, "c:p:b:h", long_options, &option_index);
+	    c = getopt_long (argc, argv, "c:p:b:hv", long_options, &option_index);
           /* Detect the end of the options. */
            if (c == -1)
              break;
@@ -562,6 +580,10 @@ int main(int argc,char **argv)
              {
              case 'p':
 		protocol = atoi(optarg);
+               break;
+
+             case 'v':
+		verbose = 1;
                break;
 
              case 'b':
