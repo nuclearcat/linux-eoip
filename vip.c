@@ -470,19 +470,19 @@ static void *thr_tx(void *threadid)
 	/* If we are fragmented anyway, try to increase second packet size
 	    so average packet size will be higher
 	*/
-//	if (payloadsz > maxpacked)
-//	    multiplier = 2;
-//	else
-//	    multiplier = 1;
+	if (payloadsz > maxpacked)
+	    multiplier = 2;
+	else
+	    multiplier = 1;
 
 	timeout.tv_sec = 0;
 	timeout.tv_usec = packdelay; /* ms*1000, 0.05ms */
 
 	while(payloadsz < (maxpacked*multiplier) ) {
 	    /* try to get next packet */
-    	    FD_ZERO(&rfds);
-    	    FD_SET(fd, &rfds);
-    	    ret = select(fd+1, &rfds, NULL, NULL, &timeout);
+	    FD_ZERO(&rfds);
+	    FD_SET(fd, &rfds);
+	    ret = select(fd+1, &rfds, NULL, NULL, &timeout);
 	    if (ret<=0) {
 		break;
 	    }
