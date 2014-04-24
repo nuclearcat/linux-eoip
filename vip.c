@@ -68,7 +68,7 @@ const unsigned char xormask = 0x55; //3847611839 in hex.
    If you choice performance - more vectors, to avoid expensive context switches
 */
 
-#define MAXPAYLOAD (4096)
+#define MAXPAYLOAD (65536)
 //#define MAXPACKED (1500-200)
 //#define MAXPACKED (1700)
 //#define PREALLOCBUF 32
