@@ -319,15 +319,22 @@ static void *thr_rx(void *threadid)
 			    while(1) {				
 				total = ntohs(*(uint16_t*)(ptr+offset+2)); /* 2 byte - IP offset to total len */
 				
-				if ((int)(offset+total)>rxringpayload[rxringconsumed]) {				    
+				if ((int)(offset+total)>rxringpayload[rxringconsumed]) {
 				    printf("invalid offset! %d > %d IP size %d\n",(offset+total),rxringpayload[rxringconsumed],total);				    
+				    break;
+				}
+				if (!total) {
+				    printf("Loop error\n");
 				    break;
 				}
 				pthread_mutex_lock(&raw_mutex);
 				ret = write(tunnel->fd,ptr+offset,total);
 				pthread_mutex_unlock(&raw_mutex);
-				if (ret<0)
-				    perror("tunnel write error #1\n");
+				if (ret<0) {
+				    printf("invalid offset! %d > %d IP size %d\n",(offset+total),rxringpayload[rxringconsumed],total);
+				    perror("tunnel write error #1: ");
+				    break;
+				}
 
 				offset += total;
 				
