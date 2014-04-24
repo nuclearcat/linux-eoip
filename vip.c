@@ -448,14 +448,16 @@ static void *thr_tx(void *threadid)
 	ip[1] = 0; 
 
 	if (!prevavail) {
+	    /* Read from tunnel */
 	    pthread_mutex_lock(&raw_mutex);
-	    payloadsz = read(fd,payloadptr,MAXPAYLOAD);
+	    payloadsz = read(fd, payloadptr, MAXPAYLOAD);
 	    pthread_mutex_unlock(&raw_mutex);
-	    
+
 	    if (payloadsz < 0)
 		continue;
 
 	    unsigned short total = ntohs(*(uint16_t*)(payloadptr+2));
+	    /* Invalid IP packet? */
 	    if (total != payloadsz)
 		printf("t %d p %d\n",total,payloadsz);
 
@@ -466,12 +468,12 @@ static void *thr_tx(void *threadid)
 	}
 
 	/* If we are fragmented anyway, try to increase second packet size
-	    so average packet size will be higher	    
+	    so average packet size will be higher
 	*/
-	if (payloadsz > maxpacked) 
-	    multiplier = 2;
-	else
-	    multiplier = 1;
+//	if (payloadsz > maxpacked)
+//	    multiplier = 2;
+//	else
+//	    multiplier = 1;
 
 	timeout.tv_sec = 0;
 	timeout.tv_usec = packdelay; /* ms*1000, 0.05ms */
