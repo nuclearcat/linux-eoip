@@ -326,12 +326,8 @@ static void *thr_rx(void *threadid)
 				pthread_mutex_lock(&raw_mutex);
 				ret = write(tunnel->fd,ptr+offset,total);
 				pthread_mutex_unlock(&raw_mutex);
-				if (ret<0) {
+				if (ret<0)
 				    perror("tunnel write error #1\n");
-				    printf("error details: %d,%d\n",offset,total);
-				    break;
-				}
-				
 
 				offset += total;
 				
@@ -533,9 +529,8 @@ static void *thr_tx(void *threadid)
 	if(sendto(raw_socket, ip, payloadsz+2, 0,(struct sockaddr *)&tunnel->daddr, (socklen_t)sizeof(daddr)) < 0)
 		perror("send() err");
 	pthread_mutex_unlock(&raw_mutex);
-
     }
-    return(NULL);    
+    return(NULL);
 }
 
 int main(int argc,char **argv)
