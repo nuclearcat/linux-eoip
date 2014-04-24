@@ -229,17 +229,9 @@ static void *thr_rx(void *threadid)
 	exit(1);
     }
 
-//    if (posix_memalign((void **)&wrkmem, 64, LZO1X_1_MEM_COMPRESS))
-//	exit(1);
-
 #endif
 
-
     rxringbuffer = malloc(MAXPAYLOAD*MAXRINGBUF);
-
-/*    if (posix_memalign((void **)&rxringbuffer, 64, MAXPAYLOAD*MAXRINGBUF))
-	exit(1);
-*/
 
     if (!rxringbuffer) {
 	perror("malloc()");
@@ -258,7 +250,7 @@ static void *thr_rx(void *threadid)
 
 	    while (rxringbufused < MAXRINGBUF) {
 		pthread_mutex_lock(&raw_mutex);
-		rxringpayload[rxringbufused] = read(raw_socket,rxringbufptr[rxringbufused],MAXPAYLOAD);
+		rxringpayload[rxringbufused] = read(raw_socket, rxringbufptr[rxringbufused], MAXPAYLOAD);
 		pthread_mutex_unlock(&raw_mutex);
 
 		
@@ -296,7 +288,7 @@ static void *thr_rx(void *threadid)
 				memcpy(ptr+22,decompressed,decompressedsz);
 				rxringpayload[rxringconsumed] = decompressedsz + 22;
 			    } else {				
-				perror("lzo feeling bad about your packet\n");\
+				perror("lzo feeling bad about your packet ");\
 				break;
 				//exit(1);
 			    }
@@ -315,12 +307,15 @@ static void *thr_rx(void *threadid)
 			    unsigned int offset = 22; /* 20 IP header + 2 byte of tunnel id and bitfield */
 			    unsigned short total;
 
-//			    ctr_packed++;				
-			    while(1) {				
+			    while(1) {
+				uint8_t ihl = (*(uint8_t*)(ptr+offset)) & 0xF;
+				if (ihl != 5) {
+				    printf("Non-standard IHL %d\n", ihl);
+				}
 				total = ntohs(*(uint16_t*)(ptr+offset+2)); /* 2 byte - IP offset to total len */
 				
 				if ((int)(offset+total)>rxringpayload[rxringconsumed]) {
-				    printf("invalid offset! %d > %d IP size %d\n",(offset+total),rxringpayload[rxringconsumed],total);				    
+				    printf("invalid offset! %d > %d IP size %d\n",(offset+total),rxringpayload[rxringconsumed],total);
 				    break;
 				}
 				if (!total) {
@@ -397,9 +392,6 @@ static void *thr_tx(void *threadid)
     int compressedsz;
     struct sockaddr_in daddr;
     int ret;
-
-
-//    unsigned int ctr_uncompressed = 0, ctr_compressed = 0, ctr_packed = 0, ctr_normal = 0;
     fd_set rfds;
     struct timeval timeout;
     unsigned int packdelay = thr_tx_data->packdelay;
@@ -410,10 +402,6 @@ static void *thr_tx(void *threadid)
     int cpu = thr_tx_data->cpu;
     cpu_set_t cpuset;
     pthread_t thread = pthread_self();
-//#ifdef GCRYPT
-//    /* CTRL_PKT, 2 byte VIP hdr, 2 byte extra, 1476 - 369 checksums */
-//    uint32_t cksumbuf[369];
-//#endif
 
     CPU_ZERO(&cpuset);
     CPU_SET(cpu, &cpuset);
@@ -421,9 +409,7 @@ static void *thr_tx(void *threadid)
     if (ret)
 	printf("Affinity error %d\n",ret);
     else
-	printf("TX thread(ID %d) set to cpu %d packdelay %d\n",tunnel->id,cpu,packdelay);
-
-
+	printf("TX thread(ID %d) set to cpu %d packdelay %dms\n", tunnel->id, cpu, packdelay/1000);
 #endif
 
 
@@ -476,7 +462,7 @@ static void *thr_tx(void *threadid)
 	    multiplier = 1;
 
 	timeout.tv_sec = 0;
-	timeout.tv_usec = packdelay; /* ms*1000, 0.05ms */
+	timeout.tv_usec = packdelay; /* ms*1000 */
 
 	while(payloadsz < (maxpacked*multiplier) ) {
 	    /* try to get next packet */
@@ -490,7 +476,7 @@ static void *thr_tx(void *threadid)
 	    prevavail = read(fd,prevptr,MAXPAYLOAD);
 	    /* TODO: unlikely */
 	    if (prevavail < 0) {
-		perror("Invalid situation\n");
+		perror("Invalid situation ");
 		prevavail = 0;
 		continue;
 		//break;
@@ -508,12 +494,10 @@ static void *thr_tx(void *threadid)
 	    }
 	}
 
-
-
 #ifdef HAVE_LIBLZO2
 	if (compression) {
 	    compressedsz = MAXPAYLOAD*2;
-	    ret = lzo1x_1_compress(payloadptr,payloadsz,compressed,(lzo_uintp)&compressedsz,wrkmem);
+	    ret = lzo1x_1_compress(payloadptr, payloadsz, compressed, (lzo_uintp)&compressedsz, wrkmem);
 
 	    /* Adaptive compression */
 	    if (compressedsz >= payloadsz || compressedsz > MAXPAYLOAD) {
@@ -527,11 +511,6 @@ static void *thr_tx(void *threadid)
 #else
 	compressedsz = 0;
 #endif
-
-
-//#ifdef GCRYPT
-//	gcry_md_hash_buffer(GCRY_MD_CRC32,cksumbuf,ip,payloadsz+2);
-//#endif
 	xor(ip, payloadsz+2);
 
 	pthread_mutex_lock(&raw_mutex);
@@ -617,7 +596,7 @@ int main(int argc,char **argv)
 //    ret = lzo_init();    
 //#endif
 
-    printf("Virtual IP %s\n",PACKAGE_VERSION);
+    printf("Virtual IP %s\n", PACKAGE_VERSION);
     printf("(c) Denys Fedoryshchenko <nuclearcat@nuclearcat.com>\n");
 
     thr_rx_data.raw_socket = socket(PF_INET, SOCK_RAW, protocol);
@@ -695,24 +674,22 @@ int main(int argc,char **argv)
 	tunnel->thr_tx_data = malloc(sizeof(struct thr_tx));
         tunnel->thr_tx_data->tunnel = tunnel;
 	tunnel->thr_tx_data->cpu = sn+1;
-	tunnel->thr_tx_data->packdelay = (int)ini_getl(section,"delay",1000,configname);
-	tunnel->thr_tx_data->maxpacked = (int)ini_getl(section,"maxpacked",1500,configname);
-	tunnel->thr_tx_data->compression = (int)ini_getl(section,"compression",1,configname);
+	tunnel->thr_tx_data->packdelay = (int)ini_getl(section, "delay", 1000, configname);
+	tunnel->thr_tx_data->maxpacked = (int)ini_getl(section, "maxpacked", 1500, configname);
+	tunnel->thr_tx_data->compression = (int)ini_getl(section, "compression", 0, configname);
         tunnel->thr_tx_data->raw_socket = thr_rx_data.raw_socket;
-	if (tunnel->thr_tx_data->maxpacked > 1500)
-	    tunnel->thr_tx_data->maxpacked = 1500;
+	if (tunnel->thr_tx_data->maxpacked > 1500) {
+	    //tunnel->thr_tx_data->maxpacked = 1500;
+	    printf("Max packed data not recommended > 1500\n");
+	}
 	printf("Name %s ID %d Delay %d maxpacked %d compression %d\n",tunnel->name,tunnel->id,tunnel->thr_tx_data->packdelay,tunnel->thr_tx_data->maxpacked,tunnel->thr_tx_data->compression);
-	//printf("Max packed %d\n",tunnel->thr_tx_data->maxpacked);
      }
-    
 
     if (thr_rx_data.raw_socket == -1) {
 	perror("raw socket error():");
 	exit(-1);
     }
     fcntl(thr_rx_data.raw_socket, F_SETFL, O_NONBLOCK);
-
-
 
     for(i=0;i<numtunnels;i++)
     {
@@ -723,11 +700,6 @@ int main(int argc,char **argv)
       }
     }
 
-
-//    memset(&sa, 0x0,sizeof(sa));
-//    sa.sa_handler = term_handler;
-//    sigaction( SIGTERM , &sa, 0);
-//    sigaction( SIGINT , &sa, 0);
 
     threads = malloc(sizeof(pthread_t)*(numtunnels+1));
 
