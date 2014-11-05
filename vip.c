@@ -94,7 +94,8 @@ uint32_t counter_total = 0;
 
 typedef struct
 {
-   struct sockaddr_in   daddr;
+   struct sockaddr_in   daddr[64];
+   int			daddr_cnt;
    int                  id;
    int                  fd;
    struct ifreq		ifr;
@@ -386,14 +387,14 @@ static void *thr_tx(void *threadid)
 
     unsigned char *prevptr = malloc(MAXPAYLOAD); /* 2-byte header of VIP, rest is payload */
     int prevavail = 0;
-
+    int daddr_num = 0;
     unsigned char *compressed = malloc(MAXPAYLOAD*2); /* 2-byte header of VIP, rest is payload */
 #ifdef HAVE_LIBLZO2
     lzo_voidp wrkmem;
 #endif
     int payloadsz;
     int compressedsz;
-    struct sockaddr_in daddr;
+//    struct sockaddr_in daddr;
     int ret;
     fd_set rfds;
     struct timeval timeout;
@@ -531,8 +532,10 @@ static void *thr_tx(void *threadid)
 	xor(ip, payloadsz+2);
 
 	pthread_mutex_lock(&raw_mutex);
-	if(sendto(raw_socket, ip, payloadsz+2, 0,(struct sockaddr *)&tunnel->daddr, (socklen_t)sizeof(daddr)) < 0)
+	if(sendto(raw_socket, ip, payloadsz+2, 0,(struct sockaddr *)&tunnel->daddr[daddr_num], (socklen_t)sizeof(tunnel->daddr[0])) < 0)
 		perror("send() err");
+	daddr_num++;
+	daddr_num %= tunnel->daddr_cnt;
 	pthread_mutex_unlock(&raw_mutex);
     }
     return(NULL);
@@ -672,22 +675,41 @@ int main(int argc,char **argv)
 	strncpy(tunnel->name,section,64);
 
 
-	tunnel->daddr.sin_family = AF_INET;
-	tunnel->daddr.sin_port = 0;
+	tunnel->daddr[0].sin_family = AF_INET;
+	tunnel->daddr[0].sin_port = 0;
 	if (ini_gets(section,"dst","0.0.0.0",strbuf,sizeof(strbuf),configname) < 1) {
 	    printf("Destination for %s not correct\n",section);
 	} else {
 	    printf("Destination for %s: %s\n",section,strbuf);
 	}
 
-    	if (!inet_pton(AF_INET, strbuf, (struct in_addr *)&tunnel->daddr.sin_addr.s_addr))
+    	if (!inet_pton(AF_INET, strbuf, (struct in_addr *)&tunnel->daddr[0].sin_addr.s_addr))
 	{
 	    warn("Destination \"%s\" is not correct\n", strbuf);
 	    exit(-1);
 	}
-	memset(tunnel->daddr.sin_zero, 0x0, sizeof(tunnel->daddr.sin_zero));
+	memset(tunnel->daddr[0].sin_zero, 0x0, sizeof(tunnel->daddr[0].sin_zero));
+	tunnel->daddr_cnt = 1;
+
+	/* TODO Fix this dirty hack */
+	tunnel->daddr[1].sin_family = AF_INET;
+	tunnel->daddr[1].sin_port = 0;
+	if (ini_gets(section,"dst1","0.0.0.0",strbuf,sizeof(strbuf),configname) < 1) {
+	    printf("Destination for %s not correct\n",section);
+	} else {
+	    printf("Destination for %s: %s\n",section,strbuf);
+	    if (!strncmp(strbuf, "0.0.0.0", 7)) {
+    		if (!inet_pton(AF_INET, strbuf, (struct in_addr *)&tunnel->daddr[1].sin_addr.s_addr))
+		{
+		    warn("Destination \"%s\" is not correct\n", strbuf);
+		    exit(-1);
+		}
+		memset(tunnel->daddr[0].sin_zero, 0x0, sizeof(tunnel->daddr[1].sin_zero));
+		tunnel->daddr_cnt=2;
+	    }
+	}
+
 	tunnel->id = (int)ini_getl(section,"id",0,configname);
-	/* TODO: What is max value of tunnel? */
 	if (tunnel->id == 0 || tunnel->id > 255) {
 	    warn("ID of \"%d\" is not correct\n", tunnel->id);
 	    exit(-1);
