@@ -704,8 +704,25 @@ int main(int argc,char **argv)
 		    warn("Destination \"%s\" is not correct\n", strbuf);
 		    exit(-1);
 		}
-		memset(tunnel->daddr[0].sin_zero, 0x0, sizeof(tunnel->daddr[1].sin_zero));
+		memset(tunnel->daddr[1].sin_zero, 0x0, sizeof(tunnel->daddr[1].sin_zero));
 		tunnel->daddr_cnt=2;
+	    }
+	}
+
+	tunnel->daddr[2].sin_family = AF_INET;
+	tunnel->daddr[2].sin_port = 0;
+	if (ini_gets(section,"dst2","0.0.0.0",strbuf,sizeof(strbuf),configname) < 1) {
+	    printf("Destination for %s not correct\n",section);
+	} else {
+	    printf("Destination[2] for %s: %s\n",section,strbuf);
+	    if (strncmp(strbuf, "0.0.0.0", 7)) {
+    		if (!inet_pton(AF_INET, strbuf, (struct in_addr *)&tunnel->daddr[2].sin_addr.s_addr))
+		{
+		    warn("Destination \"%s\" is not correct\n", strbuf);
+		    exit(-1);
+		}
+		memset(tunnel->daddr[2].sin_zero, 0x0, sizeof(tunnel->daddr[2].sin_zero));
+		tunnel->daddr_cnt=3;
 	    }
 	}
 
