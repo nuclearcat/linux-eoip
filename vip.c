@@ -680,7 +680,7 @@ int main(int argc,char **argv)
 	if (ini_gets(section,"dst","0.0.0.0",strbuf,sizeof(strbuf),configname) < 1) {
 	    printf("Destination for %s not correct\n",section);
 	} else {
-	    printf("Destination for %s: %s\n",section,strbuf);
+	    printf("Destination[0] for %s: %s\n",section,strbuf);
 	}
 
     	if (!inet_pton(AF_INET, strbuf, (struct in_addr *)&tunnel->daddr[0].sin_addr.s_addr))
@@ -697,8 +697,8 @@ int main(int argc,char **argv)
 	if (ini_gets(section,"dst1","0.0.0.0",strbuf,sizeof(strbuf),configname) < 1) {
 	    printf("Destination for %s not correct\n",section);
 	} else {
-	    printf("Destination for %s: %s\n",section,strbuf);
-	    if (!strncmp(strbuf, "0.0.0.0", 7)) {
+	    printf("Destination[1] for %s: %s\n",section,strbuf);
+	    if (strncmp(strbuf, "0.0.0.0", 7)) {
     		if (!inet_pton(AF_INET, strbuf, (struct in_addr *)&tunnel->daddr[1].sin_addr.s_addr))
 		{
 		    warn("Destination \"%s\" is not correct\n", strbuf);
