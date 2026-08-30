@@ -12,14 +12,25 @@ and its own transmit thread.
 
 ## Building
 
-    ./bootstrap.sh      # only from a git checkout; not needed for a release tarball
-    ./configure
-    make
-    make install
+    cmake -B build
+    cmake --build build
+    sudo cmake --install build
+
+Requires CMake 3.13 or later and a C compiler; binaries land in
+`CMAKE_INSTALL_PREFIX/bin`, `/usr/local/bin` by default.
 
 `liblzo2` is optional and detected automatically. It is only used by `vip`,
 for the `compression` option; without it, `vip` still builds and runs, but
 cannot compress or decompress.
+
+| CMake option | Default | Meaning |
+|---|---|---|
+| `WITH_LZO` | `AUTO` | `AUTO` uses liblzo2 if present, `ON` fails configuration when it is missing, `OFF` builds without it. |
+| `CMAKE_BUILD_TYPE` | `Release` | Standard CMake build types. |
+
+So to guarantee a build with compression support:
+
+    cmake -B build -DWITH_LZO=ON
 
 Both daemons need raw sockets and the ability to create network interfaces,
 so run them as root, or grant `CAP_NET_RAW` and `CAP_NET_ADMIN`.
