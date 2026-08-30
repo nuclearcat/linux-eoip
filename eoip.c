@@ -75,7 +75,7 @@ typedef struct {
     int			id;
     int			fd;
     struct ifreq	ifr;
-    char		name[65];
+    char		name[IFNAMSIZ];
     int			dynamic;
 #ifndef __UCLIBC__
     int			cpu;
@@ -136,9 +136,9 @@ static int open_tun(Tunnel *tunnel) {
 
     tunnel->ifr.ifr_flags = IFF_TAP|IFF_NO_PI;
     if (tunnel->name[0] != 0)
-	strncpy(tunnel->ifr.ifr_name, tunnel->name,IFNAMSIZ);
+	snprintf(tunnel->ifr.ifr_name, IFNAMSIZ, "%s", tunnel->name);
     else
-	strncpy(tunnel->ifr.ifr_name, "eoip%d",IFNAMSIZ);
+	snprintf(tunnel->ifr.ifr_name, IFNAMSIZ, "%s", "eoip%d");
 
     if (ioctl(tunnel->fd, TUNSETIFF, (void *)&tunnel->ifr) < 0) {
         perror("ioctl-1");
@@ -327,7 +327,7 @@ int main(int argc, char **argv)
     Tunnel *tunnel;
     struct sigaction sa;
     struct stat mystat;
-    char section[IFNAMSIZ];
+    char section[64];
     char strbuf[256];
     char *configname;
     char defaultcfgname[] = "/etc/eoip.cfg";
@@ -401,11 +401,12 @@ int main(int argc, char **argv)
     for (sn = 0; ini_getsection(sn, section, sizearray(section), configname) > 0; sn++) {
 	tunnel = tunnels + sn;
 	printf("Creating tunnel: %s num %d\n", section,sn);
-	if (strlen(section)>64) {
-	    printf("Name of tunnel need to be shorter than 64 symbols\n");
+	if (strlen(section) >= IFNAMSIZ) {
+	    warnx("Tunnel name \"%s\" must be shorter than %d characters",
+		  section, IFNAMSIZ);
 	    exit(-1);
 	}
-	strncpy(tunnel->name, section, 64);
+	strncpy(tunnel->name, section, sizeof(tunnel->name) - 1);
 	tunnel->daddr.sin_family = AF_INET;
 	tunnel->daddr.sin_port = 0;
 	tunnel->dynamic = 0;

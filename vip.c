@@ -97,7 +97,7 @@ typedef struct
    int                  id;
    int                  fd;
    struct ifreq		ifr;
-   char 		name[65];
+   char 		name[IFNAMSIZ];
    struct thr_tx 	*thr_tx_data;
 }  Tunnel;
 
@@ -190,9 +190,9 @@ static int open_tun(Tunnel *tunnel)
 
     tunnel->ifr.ifr_flags = IFF_TUN|IFF_NO_PI;
     if (tunnel->name[0] != 0)
-	strncpy(tunnel->ifr.ifr_name, tunnel->name,IFNAMSIZ);
+	snprintf(tunnel->ifr.ifr_name, IFNAMSIZ, "%s", tunnel->name);
     else
-	strncpy(tunnel->ifr.ifr_name, "vip%d",IFNAMSIZ);
+	snprintf(tunnel->ifr.ifr_name, IFNAMSIZ, "%s", "vip%d");
 
     if (ioctl(tunnel->fd, TUNSETIFF, (void *)&tunnel->ifr) < 0) {
         perror("ioctl-1");
@@ -605,7 +605,7 @@ int main(int argc,char **argv)
     Tunnel *tunnel;
     struct sigaction sa;
     struct stat mystat;
-    char section[IFNAMSIZ];
+    char section[64];
     char strbuf[256];
     static const char *dstkeys[] = { "dst", "dst1", "dst2" };
     char *configname = NULL;
@@ -742,11 +742,12 @@ int main(int argc,char **argv)
 	tunnel = tunnels + sn;
 	printf("Creating tunnel: %s num %d\n", section,sn);
 
-	if (strlen(section)>64) {
-	    printf("Name of tunnel need to be shorter than 64 symbols\n");
+	if (strlen(section) >= IFNAMSIZ) {
+	    warnx("Tunnel name \"%s\" must be shorter than %d characters",
+		  section, IFNAMSIZ);
 	    exit(-1);
 	}
-	strncpy(tunnel->name,section,64);
+	strncpy(tunnel->name, section, sizeof(tunnel->name) - 1);
 
 
 	/* dst, dst1 and dst2 are packed into daddr[] in order, so that a
