@@ -564,6 +564,7 @@ int main(int argc,char **argv)
     struct stat mystat;
     char section[IFNAMSIZ];
     char strbuf[256];
+    static const char *dstkeys[] = { "dst", "dst1", "dst2" };
     char *configname = NULL;
     char *bindaddr = NULL;
     char defaultcfgname[] = "/etc/vip.cfg";
@@ -689,55 +690,27 @@ int main(int argc,char **argv)
 	strncpy(tunnel->name,section,64);
 
 
-	tunnel->daddr[0].sin_family = AF_INET;
-	tunnel->daddr[0].sin_port = 0;
-	if (ini_gets(section,"dst","0.0.0.0",strbuf,sizeof(strbuf),configname) < 1) {
-	    printf("Destination for %s not correct\n",section);
-	} else {
-	    printf("Destination[0] for %s: %s\n",section,strbuf);
+	/* dst, dst1 and dst2 are packed into daddr[] in order, so that a
+	   configuration naming dst and dst2 but not dst1 does not leave an
+	   unset 0.0.0.0 entry in the middle of the round-robin list. */
+	tunnel->daddr_cnt = 0;
+	for (i = 0; i < (int)sizearray(dstkeys); i++) {
+	    if (ini_gets(section, dstkeys[i], "", strbuf, sizeof(strbuf), configname) < 1)
+		continue;
+	    if (!strcmp(strbuf, "0.0.0.0"))
+		continue;
+	    if (!inet_pton(AF_INET, strbuf, &tunnel->daddr[tunnel->daddr_cnt].sin_addr)) {
+		warnx("Destination \"%s\" for %s is not correct", strbuf, section);
+		exit(-1);
+	    }
+	    tunnel->daddr[tunnel->daddr_cnt].sin_family = AF_INET;
+	    tunnel->daddr[tunnel->daddr_cnt].sin_port = 0;
+	    printf("Destination[%d] for %s: %s\n", tunnel->daddr_cnt, section, strbuf);
+	    tunnel->daddr_cnt++;
 	}
-
-    	if (!inet_pton(AF_INET, strbuf, (struct in_addr *)&tunnel->daddr[0].sin_addr.s_addr))
-	{
-	    warn("Destination \"%s\" is not correct\n", strbuf);
+	if (!tunnel->daddr_cnt) {
+	    warnx("No usable destination for %s", section);
 	    exit(-1);
-	}
-	memset(tunnel->daddr[0].sin_zero, 0x0, sizeof(tunnel->daddr[0].sin_zero));
-	tunnel->daddr_cnt = 1;
-
-	/* TODO Fix this dirty hack */
-	tunnel->daddr[1].sin_family = AF_INET;
-	tunnel->daddr[1].sin_port = 0;
-	if (ini_gets(section,"dst1","0.0.0.0",strbuf,sizeof(strbuf),configname) < 1) {
-	    printf("Destination for %s not correct\n",section);
-	} else {
-	    printf("Destination[1] for %s: %s\n",section,strbuf);
-	    if (strncmp(strbuf, "0.0.0.0", 7)) {
-    		if (!inet_pton(AF_INET, strbuf, (struct in_addr *)&tunnel->daddr[1].sin_addr.s_addr))
-		{
-		    warn("Destination \"%s\" is not correct\n", strbuf);
-		    exit(-1);
-		}
-		memset(tunnel->daddr[1].sin_zero, 0x0, sizeof(tunnel->daddr[1].sin_zero));
-		tunnel->daddr_cnt=2;
-	    }
-	}
-
-	tunnel->daddr[2].sin_family = AF_INET;
-	tunnel->daddr[2].sin_port = 0;
-	if (ini_gets(section,"dst2","0.0.0.0",strbuf,sizeof(strbuf),configname) < 1) {
-	    printf("Destination for %s not correct\n",section);
-	} else {
-	    printf("Destination[2] for %s: %s\n",section,strbuf);
-	    if (strncmp(strbuf, "0.0.0.0", 7)) {
-    		if (!inet_pton(AF_INET, strbuf, (struct in_addr *)&tunnel->daddr[2].sin_addr.s_addr))
-		{
-		    warn("Destination \"%s\" is not correct\n", strbuf);
-		    exit(-1);
-		}
-		memset(tunnel->daddr[2].sin_zero, 0x0, sizeof(tunnel->daddr[2].sin_zero));
-		tunnel->daddr_cnt=3;
-	    }
 	}
 
 	tunnel->id = (int)ini_getl(section,"id",0,configname);
