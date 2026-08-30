@@ -169,7 +169,7 @@ static void *thr_rx(void *threadid)
     unsigned char *ptr;
     struct gre_hdr *ghdr;
     int i, ret, hlen, rxringbufused = 0, rxringbufconsumed, rxringpayload[MAXRINGBUF];
-    int saddr_size = sizeof(saddr[0]);
+    socklen_t saddr_size;
     int raw_socket = thr_rx_data->raw_socket;
     Tunnel *tunnel;
     fd_set rfds;
@@ -205,7 +205,9 @@ static void *thr_rx(void *threadid)
 	    ret = select(raw_socket+1, &rfds, NULL, NULL, NULL);
 	    assert(rxringbufused == 0);
 	    while (rxringbufused < MAXRINGBUF) {
-		rxringpayload[rxringbufused] = recvfrom(raw_socket, rxringbufptr[rxringbufused], MAXPAYLOAD, 0, &saddr[rxringbufused], &saddr_size);
+		saddr_size = sizeof(saddr[0]);
+		rxringpayload[rxringbufused] = recvfrom(raw_socket, rxringbufptr[rxringbufused], MAXPAYLOAD, 0,
+						       (struct sockaddr *)&saddr[rxringbufused], &saddr_size);
 		if (rxringpayload[rxringbufused] < 0)
 		    break;
 		if (rxringpayload[rxringbufused] >= 28)
