@@ -528,10 +528,6 @@ static void *thr_tx(void *threadid)
 	if (compression) {
 	    compressedsz = MAXPAYLOAD*2;
 	    ret = lzo1x_1_compress(payloadptr, payloadsz, compressed, &compressedsz, wrkmem);
-	    if (verbose) {
-		counter = compressedsz;
-	    }
-
 	    /* Adaptive compression */
 	    if (compressedsz >= payloadsz || compressedsz > MAXPAYLOAD) {
 		compressedsz = 0;
