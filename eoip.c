@@ -263,8 +263,8 @@ static void *thr_tx(void *threadid)
     int raw_socket = thr_tx_data->raw_socket;
     int payloadsz, ret;
     unsigned char *ip = malloc(MAXPAYLOAD + 8); /* 8-byte header of GRE, rest is payload */
-    struct gre_hdr *ghdr = (struct gre_hdr*)ip;
-    unsigned char *payloadptr = ip + 8;
+    struct gre_hdr *ghdr;
+    unsigned char *payloadptr;
     fd_set rfds;
 #ifndef __UCLIBC__
     int cpu = thr_tx_data->cpu;
@@ -280,6 +280,13 @@ static void *thr_tx(void *threadid)
     else
 	printf("TX thread(ID %d) set to cpu %d\n", tunnel->id, cpu);
 #endif
+    if (!ip) {
+	perror("malloc()");
+	exit(1);
+    }
+    ghdr = (struct gre_hdr*)ip;
+    payloadptr = ip + 8;
+
     memset(ip, 0x0, 20);
 
     ghdr->header = __cpu_to_be32(0x20016400);
@@ -307,7 +314,7 @@ int main(int argc, char **argv)
 {
     struct thr_rx thr_rx_data;
     struct thr_tx *thr_tx_data;
-    int ret, i, sn, rc, optval = 262144;
+    int i, sn, rc, optval = 262144;
     Tunnel *tunnel;
     struct sigaction sa;
     struct stat mystat;
@@ -424,9 +431,16 @@ int main(int argc, char **argv)
     sigaction( SIGTERM , &sa, 0);
     sigaction( SIGINT , &sa, 0);
     threads = malloc(sizeof(pthread_t)*(numtunnels+1));
+    if (threads == NULL) {
+	perror("malloc() failed");
+	exit(-1);
+    }
 
     /* Fork after creating tunnels, useful for scripts */
-    ret = daemon(1, 1);
+    if (daemon(1, 1)) {
+	perror("daemon() failed");
+	exit(-1);
+    }
 
     /* POSIX basename() may modify its argument, so hand it a copy */
     if ((cfgcopy = strdup(configname)) == NULL)
@@ -453,18 +467,32 @@ int main(int argc, char **argv)
     pthread_attr_setstacksize(&attr, LINUX_THREAD_STACK_SIZE);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
     rc = pthread_create(&threads[0], &attr, thr_rx, (void *)&thr_rx_data);
+    if (rc) {
+	errno = rc;
+	perror("pthread_create() RX");
+	exit(-1);
+    }
 
     for(i=0;i<numtunnels;i++) {
 	tunnel=tunnels + i;
 	fcntl(tunnel->fd, F_SETFL, O_NONBLOCK);
 	/* Allocate for each thread */
 	thr_tx_data = malloc(sizeof(struct thr_tx));
+	if (thr_tx_data == NULL) {
+	    perror("malloc() failed");
+	    exit(-1);
+	}
 	thr_tx_data->tunnel = tunnel;
 #ifndef __UCLIBC__
 	thr_tx_data->cpu = i+1;
 #endif
 	thr_tx_data->raw_socket = thr_rx_data.raw_socket;
 	rc = pthread_create(&threads[i+1], &attr, thr_tx, (void *)thr_tx_data);
+	if (rc) {
+	    errno = rc;
+	    perror("pthread_create() TX");
+	    exit(-1);
+	}
     }
     rc = pthread_join(threads[0], &status);
     return(0);

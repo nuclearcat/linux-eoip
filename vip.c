@@ -400,8 +400,7 @@ static void *thr_tx(void *threadid)
     int fd = tunnel->fd;
     int raw_socket = thr_tx_data->raw_socket;
     unsigned char *ip = malloc(MAXPAYLOAD+2); /* 2-byte header of VIP, rest is payload */
-    unsigned char *payloadptr = ip+2;
-
+    unsigned char *payloadptr;
     unsigned char *prevptr = malloc(MAXPAYLOAD);
     int prevavail = 0;
     int daddr_num = 0;
@@ -442,7 +441,17 @@ static void *thr_tx(void *threadid)
 	exit(1);
     }
     wrkmem = (lzo_voidp)malloc(LZO1X_1_MEM_COMPRESS);
+    if (!compressed || !wrkmem) {
+	perror("malloc()");
+	exit(1);
+    }
 #endif
+
+    if (!ip || !prevptr) {
+	perror("malloc()");
+	exit(1);
+    }
+    payloadptr = ip+2;
 
     memset(ip,0x0,20);
 
@@ -567,7 +576,7 @@ static void *thr_tx(void *threadid)
 int main(int argc,char **argv)
 {
     struct thr_rx thr_rx_data;
-    int ret, i, sn,rc, protocol = 50, c, len;
+    int i, sn, rc, protocol = 50, c;
     Tunnel *tunnel;
     struct sigaction sa;
     struct stat mystat;
@@ -614,15 +623,15 @@ int main(int argc,char **argv)
                break;
 
              case 'b':
-		len = strlen(optarg) + 1;
-		bindaddr = malloc(len);
-		strncpy(bindaddr,optarg,len);
+		bindaddr = strdup(optarg);
+		if (bindaddr == NULL)
+		    err(1, "strdup()");
                break;
 
              case 'c':
-		len = strlen(optarg) + 1;
-		configname = malloc(len);
-		strncpy(configname,optarg,len);
+		configname = strdup(optarg);
+		if (configname == NULL)
+		    err(1, "strdup()");
                break;
      
              case 'h':
@@ -693,6 +702,10 @@ int main(int argc,char **argv)
      }
 
     tunnels = malloc(sizeof(Tunnel)*numtunnels);
+    if (tunnels == NULL) {
+	perror("malloc() failed");
+	exit(-1);
+    }
     memset(tunnels,0x0,sizeof(Tunnel)*numtunnels);
 
     for (sn = 0; ini_getsection(sn, section, sizearray(section), configname) > 0; sn++) {
@@ -736,6 +749,10 @@ int main(int argc,char **argv)
 	}
 	/* Allocate for each thread */
 	tunnel->thr_tx_data = malloc(sizeof(struct thr_tx));
+	if (tunnel->thr_tx_data == NULL) {
+	    perror("malloc() failed");
+	    exit(-1);
+	}
         tunnel->thr_tx_data->tunnel = tunnel;
 	tunnel->thr_tx_data->cpu = sn+1;
 	tunnel->thr_tx_data->packdelay = (int)ini_getl(section, "delay", 1000, configname);
@@ -776,21 +793,38 @@ int main(int argc,char **argv)
     sigaction( SIGINT , &sa, 0);
 
     threads = malloc(sizeof(pthread_t)*(numtunnels+1));
+    if (threads == NULL) {
+	perror("malloc() failed");
+	exit(-1);
+    }
 
     /* Fork after creating tunnels, useful for scripts */
-    ret = daemon(1,1);
+    if (daemon(1,1)) {
+	perror("daemon() failed");
+	exit(-1);
+    }
 
 
     pthread_attr_init(&attr);
     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
     rc = pthread_create(&threads[0], &attr, thr_rx, (void *)&thr_rx_data);
+    if (rc) {
+	errno = rc;
+	perror("pthread_create() RX");
+	exit(-1);
+    }
 
     for(i=0;i<numtunnels;i++)
     {
         tunnel=tunnels + i;
         fcntl(tunnel->fd, F_SETFL, O_NONBLOCK);
         rc = pthread_create(&threads[i+1], &attr, thr_tx, (void *)tunnel->thr_tx_data);
+	if (rc) {
+	    errno = rc;
+	    perror("pthread_create() TX");
+	    exit(-1);
+	}
     }
 
     rc = pthread_join(threads[0], &status);
