@@ -309,10 +309,6 @@ static void *thr_rx(void *threadid)
 			       MAXPAYLOAD slot, so it must not exceed the rest */
 			    decompressedsz = MAXPAYLOAD - payoff;
 			    if (lzo1x_decompress_safe(ptr+payoff,rxringpayload[rxringconsumed]-payoff,decompressed,&decompressedsz,NULL) == LZO_E_OK) {
-				if (decompressed == NULL) {
-				    printf("Please report to developer about this bug\n");
-				    //pthread_exit(1);
-				}
 				memcpy(ptr+payoff,decompressed,decompressedsz);
 				rxringpayload[rxringconsumed] = decompressedsz + payoff;
 			    } else {				
@@ -395,11 +391,6 @@ static void *thr_rx(void *threadid)
     return(NULL);    
 }
 
-static void preserve_data (unsigned char *data,int size) {
-    
-
-}
-
 
 /* Reading from tun interface, processing and pushing to raw socket */
 static void *thr_tx(void *threadid)
@@ -411,26 +402,23 @@ static void *thr_tx(void *threadid)
     unsigned char *ip = malloc(MAXPAYLOAD+2); /* 2-byte header of VIP, rest is payload */
     unsigned char *payloadptr = ip+2;
 
-    unsigned char *prevptr = malloc(MAXPAYLOAD); /* 2-byte header of VIP, rest is payload */
+    unsigned char *prevptr = malloc(MAXPAYLOAD);
     int prevavail = 0;
     int daddr_num = 0;
-    unsigned char *compressed = malloc(MAXPAYLOAD*2); /* 2-byte header of VIP, rest is payload */
 #ifdef HAVE_LIBLZO2
+    unsigned char *compressed = malloc(MAXPAYLOAD*2);
     lzo_voidp wrkmem;
-#endif
-    int payloadsz;
-#ifdef HAVE_LIBLZO2
     lzo_uint compressedsz;
     uint32_t counter = 0;
     uint32_t counter_total = 0;
+    int compression = thr_tx_data->compression;
 #endif
-//    struct sockaddr_in daddr;
+    int payloadsz;
     int ret;
     fd_set rfds;
     struct timeval timeout;
     unsigned int packdelay = thr_tx_data->packdelay;
     int maxpacked = thr_tx_data->maxpacked;
-    int compression = thr_tx_data->compression;
     int multiplier = 1;
 #ifndef __UCLIBC__
     int cpu = thr_tx_data->cpu;
@@ -544,7 +532,7 @@ static void *thr_tx(void *threadid)
 	    compressedsz = MAXPAYLOAD*2;
 	    ret = lzo1x_1_compress(payloadptr, payloadsz, compressed, &compressedsz, wrkmem);
 	    /* Adaptive compression */
-	    if (compressedsz >= payloadsz || compressedsz > MAXPAYLOAD) {
+	    if (compressedsz >= (lzo_uint)payloadsz || compressedsz > MAXPAYLOAD) {
 		compressedsz = 0;
 	    } else {
 		if (verbose) {
