@@ -70,6 +70,27 @@ else()
     message(STATUS "Batched receive: unavailable, falling back to recvfrom")
 endif()
 
+# sendmmsg is the transmit-side counterpart. Without it the transmit path
+# still batches its reads and falls back to one sendmsg per packet, which
+# takes the same msghdr, so only the send call differs.
+check_c_source_compiles("
+#ifndef __UCLIBC__
+#define _GNU_SOURCE
+#endif
+#include <sys/socket.h>
+#include <sys/uio.h>
+int main(void) {
+    struct mmsghdr msgs[1];
+    return sendmmsg(0, msgs, 1, 0) < 0;
+}
+" HAVE_SENDMMSG)
+
+if(HAVE_SENDMMSG)
+    message(STATUS "Batched send: sendmmsg")
+else()
+    message(STATUS "Batched send: unavailable, falling back to sendmsg")
+endif()
+
 find_package(Threads REQUIRED)
 
 # Must precede the subdirectories: add_compile_options only affects

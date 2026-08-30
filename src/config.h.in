@@ -11,4 +11,8 @@
    with a single syscall per batch rather than one per packet */
 #cmakedefine HAVE_RECVMMSG 1
 
+/* Defined when sendmmsg() is available, so a batch of packets leaves in a
+   single syscall rather than one sendto per packet */
+#cmakedefine HAVE_SENDMMSG 1
+
 #endif

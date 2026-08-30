@@ -69,6 +69,15 @@
 #define MAXRINGBUF  64
 #endif
 
+/* Transmit batch depth. Each slot costs MAXPAYLOAD of buffer per tunnel,
+   so this is deliberately smaller than MAXRINGBUF: most of the syscall
+   saving arrives by 8-16 and the memory is per TX thread. */
+#ifdef __UCLIBC__
+#define TXBATCH 4
+#else
+#define TXBATCH 16
+#endif
+
 #define sizearray(a)  (sizeof(a) / sizeof((a)[0]))
 
 typedef struct {
@@ -327,14 +336,14 @@ static void *thr_rx(void *threadid)
 static void *thr_tx(void *threadid)
 {
     struct thr_tx *thr_tx_data = (struct thr_tx*)threadid;
-    struct sockaddr_in daddr;
     Tunnel *tunnel = thr_tx_data->tunnel;
     int fd = tunnel->fd;
     int raw_socket = thr_tx_data->raw_socket;
-    int payloadsz, ret;
-    unsigned char *ip = malloc(MAXPAYLOAD + 8); /* 8-byte header of GRE, rest is payload */
-    struct gre_hdr *ghdr;
-    unsigned char *payloadptr;
+    int payloadsz, ret, i, n;
+    unsigned char *slab;		/* TXBATCH payload buffers */
+    struct gre_hdr *ghdrs;		/* one GRE header per slot */
+    struct mmsghdr *msgs;
+    struct iovec *iov;			/* two per slot: header, then payload */
     fd_set rfds;
 #ifndef __UCLIBC__
     int cpu = thr_tx_data->cpu;
@@ -350,30 +359,63 @@ static void *thr_tx(void *threadid)
     else
 	printf("TX thread(ID %d) set to cpu %d\n", tunnel->id, cpu);
 #endif
-    if (!ip) {
+
+    slab = malloc((size_t)MAXPAYLOAD * TXBATCH);
+    ghdrs = calloc(TXBATCH, sizeof(*ghdrs));
+    msgs = calloc(TXBATCH, sizeof(*msgs));
+    iov = calloc((size_t)TXBATCH * 2, sizeof(*iov));
+    if (!slab || !ghdrs || !msgs || !iov) {
 	perror("malloc()");
 	exit(1);
     }
-    ghdr = (struct gre_hdr*)ip;
-    payloadptr = ip + 8;
 
-    memset(ip, 0x0, 20);
+    /* The header and the payload stay in separate buffers and are stitched
+       together by the two iovecs, so nothing has to be copied to make them
+       adjacent. Everything except payload_size is constant per tunnel. */
+    for (i = 0; i < TXBATCH; i++) {
+	ghdrs[i].header = __cpu_to_be32(0x20016400);
+	ghdrs[i].tunnel_id = __cpu_to_le16((uint16_t)tunnel->id);
 
-    ghdr->header = __cpu_to_be32(0x20016400);
+	iov[i*2].iov_base = &ghdrs[i];
+	iov[i*2].iov_len = sizeof(ghdrs[i]);
+	iov[i*2+1].iov_base = slab + (size_t)MAXPAYLOAD * i;
+
+	msgs[i].msg_hdr.msg_iov = &iov[i*2];
+	msgs[i].msg_hdr.msg_iovlen = 2;
+	msgs[i].msg_hdr.msg_name = &tunnel->daddr;
+	msgs[i].msg_hdr.msg_namelen = sizeof(tunnel->daddr);
+    }
+
     while(1) {
-        FD_ZERO(&rfds);
-        FD_SET(fd, &rfds);
-        ret = select(fd+1, &rfds, NULL, NULL, NULL);
+	/* Drain whatever is already queued, up to a batch. The fd is
+	   non-blocking, so this never waits: an idle tunnel simply gets a
+	   batch of one and no latency is added. */
+	for (n = 0; n < TXBATCH; n++) {
+	    payloadsz = read(fd, iov[n*2+1].iov_base, MAXPAYLOAD);
+	    if (payloadsz <= 0)
+		break;
+	    ghdrs[n].payload_size = __cpu_to_be16((uint16_t)payloadsz);
+	    iov[n*2+1].iov_len = payloadsz;
+	}
 
-	payloadsz = read(fd, payloadptr, MAXPAYLOAD);
-	if (payloadsz < 0)
+	if (!n) {
+	    /* Only now is it worth a syscall to wait */
+	    FD_ZERO(&rfds);
+	    FD_SET(fd, &rfds);
+	    select(fd+1, &rfds, NULL, NULL, NULL);
 	    continue;
-	ghdr->payload_size = __cpu_to_be16((uint16_t)payloadsz);
-	ghdr->tunnel_id = __cpu_to_le16((uint16_t)tunnel->id);
+	}
+
 	if (tunnel->dynamic)
 	    pthread_mutex_lock(&mutex1);
-	if(sendto(raw_socket, ip, payloadsz+8, 0, (struct sockaddr *)&tunnel->daddr, (socklen_t)sizeof(daddr)) < 0)
+#ifdef HAVE_SENDMMSG
+	if (sendmmsg(raw_socket, msgs, n, 0) < 0)
 	    perror("send() err");
+#else
+	for (i = 0; i < n; i++)
+	    if (sendmsg(raw_socket, &msgs[i].msg_hdr, 0) < 0)
+		perror("send() err");
+#endif
 	if (tunnel->dynamic)
 	    pthread_mutex_unlock(&mutex1);
     }
