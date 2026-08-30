@@ -147,6 +147,18 @@ static void xor (unsigned char *mem, unsigned int size) {
     }
 }
 
+static void term_handler(int s)
+{
+    int i;
+
+    (void)s;
+    /* Only async-signal-safe calls are allowed here */
+    for (i = 0; i < numtunnels; i++)
+	close(tunnels[i].fd);
+
+    _exit(0);
+}
+
 static int open_tun(Tunnel *tunnel)
 {
     int fd;
@@ -766,6 +778,11 @@ int main(int argc,char **argv)
       }
     }
 
+
+    memset(&sa, 0x0, sizeof(sa));
+    sa.sa_handler = term_handler;
+    sigaction( SIGTERM , &sa, 0);
+    sigaction( SIGINT , &sa, 0);
 
     threads = malloc(sizeof(pthread_t)*(numtunnels+1));
 
