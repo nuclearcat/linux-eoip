@@ -89,8 +89,6 @@ __section__(".data.cacheline_aligned")))
 
 pthread_mutex_t raw_mutex = PTHREAD_MUTEX_INITIALIZER;
 uint32_t verbose = 0;
-uint32_t counter = 0;
-uint32_t counter_total = 0;
 
 typedef struct
 {
@@ -408,6 +406,8 @@ static void *thr_tx(void *threadid)
     int payloadsz;
 #ifdef HAVE_LIBLZO2
     lzo_uint compressedsz;
+    uint32_t counter = 0;
+    uint32_t counter_total = 0;
 #endif
 //    struct sockaddr_in daddr;
     int ret;
@@ -528,7 +528,6 @@ static void *thr_tx(void *threadid)
 	if (compression) {
 	    compressedsz = MAXPAYLOAD*2;
 	    ret = lzo1x_1_compress(payloadptr, payloadsz, compressed, &compressedsz, wrkmem);
-	    /* Not thread safe! TODO */
 	    if (verbose) {
 		counter = compressedsz;
 	    }
@@ -541,7 +540,8 @@ static void *thr_tx(void *threadid)
 		    counter += payloadsz - compressedsz;
 		    counter_total += payloadsz;
 		    if (counter_total > 1024*1024*50) {
-			printf("Total %d compresseddiff %d\n", counter_total, counter);
+			printf("Tunnel %d: total %u compresseddiff %u\n",
+			       tunnel->id, counter_total, counter);
 			counter_total = 0;
 			counter = 0;
 		    }
