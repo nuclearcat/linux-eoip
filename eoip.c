@@ -430,8 +430,12 @@ int main(int argc, char **argv)
 	exit(1);
 
     mfd = fopen(pidfile, "w");
-    fprintf(mfd,"%d\n", getpid());
-    fclose(mfd);
+    if (mfd == NULL) {
+	warn("cannot write pidfile %s", pidfile);
+    } else {
+	fprintf(mfd,"%d\n", getpid());
+	fclose(mfd);
+    }
 
     /* structure of Mikrotik EoIP:
 	... IP header ...
