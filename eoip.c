@@ -454,7 +454,7 @@ int main(int argc, char **argv)
 	thr_tx_data->cpu = i+1;
 #endif
 	thr_tx_data->raw_socket = thr_rx_data.raw_socket;
-	rc = pthread_create(&threads[0], &attr, thr_tx, (void *)thr_tx_data);
+	rc = pthread_create(&threads[i+1], &attr, thr_tx, (void *)thr_tx_data);
     }
     rc = pthread_join(threads[0], &status);
     return(0);
