@@ -147,6 +147,18 @@ static void xor (unsigned char *mem, unsigned int size) {
     }
 }
 
+/* Only a configured peer may inject into a tunnel */
+static int peer_allowed(const Tunnel *tunnel, in_addr_t src)
+{
+    int i;
+
+    for (i = 0; i < tunnel->daddr_cnt; i++)
+	if (tunnel->daddr[i].sin_addr.s_addr == src)
+	    return 1;
+
+    return 0;
+}
+
 static void term_handler(int s)
 {
     int i;
@@ -206,6 +218,8 @@ static int open_tun(Tunnel *tunnel)
 static void *thr_rx(void *threadid)
 {
     unsigned char *rxringbufptr[MAXRINGBUF];
+    struct sockaddr_in saddr[MAXRINGBUF];
+    socklen_t saddr_size;
     int rxringpayload[MAXRINGBUF];
     unsigned char *rxringbuffer;
     int rxringbufused = 0, rxringconsumed;
@@ -269,8 +283,10 @@ static void *thr_rx(void *threadid)
            ret = select(raw_socket+1, &rfds, NULL, NULL, NULL);
 
 	    while (rxringbufused < MAXRINGBUF) {
+		saddr_size = sizeof(saddr[0]);
 		pthread_mutex_lock(&raw_mutex);
-		rxringpayload[rxringbufused] = read(raw_socket, rxringbufptr[rxringbufused], MAXPAYLOAD);
+		rxringpayload[rxringbufused] = recvfrom(raw_socket, rxringbufptr[rxringbufused], MAXPAYLOAD, 0,
+						       (struct sockaddr *)&saddr[rxringbufused], &saddr_size);
 		pthread_mutex_unlock(&raw_mutex);
 
 		
@@ -303,6 +319,15 @@ static void *thr_rx(void *threadid)
 		    tunnel=tunnels + i;
 		    if (ptr[hlen] == (unsigned char )(tunnel->id) )
 		    {
+			if (!peer_allowed(tunnel, saddr[rxringconsumed].sin_addr.s_addr)) {
+			    static int warned;
+			    if (!warned) {
+				warned = 1;
+				printf("Dropping packet for tunnel %s from a source other than dst\n",
+				       tunnel->name);
+			    }
+			    break;
+			}
 #ifdef HAVE_LIBLZO2
 			if (ptr[hlen+1] & BIT_COMPRESSED) {
 			    /* Output is copied back to ptr+payoff inside a

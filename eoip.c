@@ -241,6 +241,15 @@ static void *thr_rx(void *threadid)
 				tunnel->daddr.sin_addr.s_addr = saddr[rxringbufconsumed].sin_addr.s_addr;
 				pthread_mutex_unlock(&mutex1);
 			    }
+			} else if (saddr[rxringbufconsumed].sin_addr.s_addr != tunnel->daddr.sin_addr.s_addr) {
+			    /* A static tunnel accepts only its configured peer */
+			    static int warned;
+			    if (!warned) {
+				warned = 1;
+				printf("Dropping packet for tunnel %s from a source other than dst\n",
+				       tunnel->name);
+			    }
+			    break;
 			}
 			ret = write(tunnel->fd, ptr + hlen + sizeof(struct gre_hdr),
 				    rxringpayload[rxringbufconsumed] - hlen - (int)sizeof(struct gre_hdr));
