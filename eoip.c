@@ -429,6 +429,12 @@ int main(int argc, char **argv)
 	    exit(-1);
 	}
 	tunnel->dynamic = (int)ini_getl(section, "dynamic", 0, configname);
+	/* A static tunnel only accepts its configured peer, so an unset dst
+	   would drop every packet. A dynamic one learns dst as it goes. */
+	if (!tunnel->dynamic && tunnel->daddr.sin_addr.s_addr == INADDR_ANY) {
+	    warnx("Tunnel %s needs a dst, or dynamic=1 to learn one", section);
+	    exit(-1);
+	}
      }
 
     fcntl(thr_rx_data.raw_socket, F_SETFL, O_NONBLOCK);
