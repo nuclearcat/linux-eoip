@@ -282,8 +282,9 @@ static void *thr_rx(void *threadid)
 		    {
 #ifdef HAVE_LIBLZO2
 			if (ptr[21] & BIT_COMPRESSED) {
-//			    decompressedsz = MAXPAYLOAD-22-3; /* Lzo note about 3 bytes in asm algos */
-			    decompressedsz = MAXPAYLOAD;
+			    /* Output is copied back to ptr+22 inside a MAXPAYLOAD
+			       slot, so it must never exceed MAXPAYLOAD-22 */
+			    decompressedsz = MAXPAYLOAD - 22;
 			    if (lzo1x_decompress_safe(ptr+22,rxringpayload[rxringconsumed]-22,decompressed,(lzo_uintp)&decompressedsz,NULL) == LZO_E_OK) {
 				if (decompressed == NULL) {
 				    printf("Please report to developer about this bug\n");
