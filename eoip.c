@@ -169,7 +169,7 @@ static void *thr_rx(void *threadid)
     unsigned char *rxringbuffer;
     unsigned char *ptr;
     struct gre_hdr *ghdr;
-    int i, ret, rxringbufused = 0, rxringbufconsumed, rxringpayload[MAXRINGBUF];
+    int i, ret, hlen, rxringbufused = 0, rxringbufconsumed, rxringpayload[MAXRINGBUF];
     int saddr_size = sizeof(saddr[0]);
     int raw_socket = thr_rx_data->raw_socket;
     Tunnel *tunnel;
@@ -216,10 +216,15 @@ static void *thr_rx(void *threadid)
 	    if (!rxringbufused)
 		continue;
 
-	    rxringbufconsumed = 0;
-	    do {
+	    for (rxringbufconsumed = 0; rxringbufconsumed < rxringbufused; rxringbufconsumed++) {
 		ptr = rxringbufptr[rxringbufconsumed];
-		ghdr = (struct gre_hdr*)(ptr+20);
+		/* A raw socket hands up the IP header too, and its length is
+		   not fixed at 20 once the sender or a router adds options */
+		hlen = (ptr[0] & 0x0F) * 4;
+		if (hlen < 20 ||
+		    rxringpayload[rxringbufconsumed] < hlen + (int)sizeof(struct gre_hdr))
+			continue;
+		ghdr = (struct gre_hdr*)(ptr+hlen);
 		ret = 0;
 		/* TODO: Optimize search of tunnel id */
 		for(i=0; i<numtunnels; i++)
@@ -236,12 +241,12 @@ static void *thr_rx(void *threadid)
 				pthread_mutex_unlock(&mutex1);
 			    }
 			}
-			ret = write(tunnel->fd, ptr+28, rxringpayload[rxringbufconsumed] - 28);
+			ret = write(tunnel->fd, ptr + hlen + sizeof(struct gre_hdr),
+				    rxringpayload[rxringbufconsumed] - hlen - (int)sizeof(struct gre_hdr));
 		        break;
 		    }
 		}
-		rxringbufconsumed++;
-	    } while (rxringbufconsumed < rxringbufused);
+	    }
 	    /* The consume loop above always drains the ring */
 	    rxringbufused = 0;
     }
