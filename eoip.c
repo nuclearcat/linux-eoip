@@ -106,20 +106,16 @@ pthread_mutex_t mutex1 = PTHREAD_MUTEX_INITIALIZER;
 
 static void term_handler(int s)
 {
-  int		fd, i;
-  Tunnel	*tunnel;
+  int		i;
 
-  if ((fd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
-    perror("socket() failed");
-    exit(-1);
-  }
-  for(i=0; i<numtunnels; i++) {
-    tunnel = tunnels + i;
-    close(tunnel->fd);
-  }
+  (void)s;
+  /* Only async-signal-safe calls are allowed here: no perror(), and
+     _exit() rather than exit(), which would run atexit handlers and
+     flush stdio from a signal context */
+  for(i=0; i<numtunnels; i++)
+    close(tunnels[i].fd);
 
-  close(fd);
-  exit(0);
+  _exit(0);
 }
 
 static int open_tun(Tunnel *tunnel) {
