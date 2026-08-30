@@ -377,6 +377,11 @@ int main(int argc, char **argv)
 	numtunnels++;
      }
 
+    if (numtunnels < 1) {
+	warnx("No tunnel sections found in %s", configname);
+	exit(-1);
+    }
+
     tunnels = malloc(sizeof(Tunnel)*numtunnels);
     if (tunnels == NULL) {
 	perror("malloc() failed");
