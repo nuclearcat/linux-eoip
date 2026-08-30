@@ -466,10 +466,16 @@ static void *thr_tx(void *threadid)
 	    if (payloadsz < 0)
 		continue;
 
-	    unsigned short total = ntohs(*(uint16_t*)(payloadptr+2));
-	    /* Invalid IP packet? */
-	    if (total != payloadsz)
-		printf("t %d p %d\n",total,payloadsz);
+	    /* Invalid IP packet? Only IPv4 carries a length field here, and
+	       only once there are enough bytes to hold one. */
+	    if (payloadsz >= 20 && (payloadptr[0] >> 4) == 4) {
+		unsigned short total;
+
+		memcpy(&total, payloadptr+2, sizeof(total));
+		total = ntohs(total);
+		if (total != payloadsz)
+		    printf("t %d p %d\n",total,payloadsz);
+	    }
 
 	} else {
 	    payloadsz = prevavail;
