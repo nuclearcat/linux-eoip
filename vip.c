@@ -440,15 +440,20 @@ static void *thr_tx(void *threadid)
     memset(ip,0x0,20);
 
     while(1) {
-        FD_ZERO(&rfds);
-        FD_SET(fd, &rfds);
-        ret = select(fd+1, &rfds, NULL, NULL, NULL);
-
 	// tunnel id
 	ip[0] = (unsigned char )(tunnel->id & 0xFF);
 	ip[1] = 0; 
 
 	if (!prevavail) {
+	    /* Nothing carried over from the previous round, wait for traffic.
+	       Do not wait when prevptr already holds a packet - it has to go
+	       out now, not when the next unrelated packet happens to arrive. */
+	    FD_ZERO(&rfds);
+	    FD_SET(fd, &rfds);
+	    ret = select(fd+1, &rfds, NULL, NULL, NULL);
+	    if (ret <= 0)
+		continue;
+
 	    /* Read from tunnel */
 	    pthread_mutex_lock(&raw_mutex);
 	    payloadsz = read(fd, payloadptr, MAXPAYLOAD);
