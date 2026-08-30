@@ -327,18 +327,24 @@ static void *thr_rx(void *threadid)
 			    unsigned short total;
 
 			    while(1) {
-				uint8_t ihl = (*(uint8_t*)(ptr+offset)) & 0xF;
+				uint8_t ihl;
+
+				/* A whole IP header has to be there before its
+				   length field can be trusted */
+				if ((int)(offset+20) > rxringpayload[rxringconsumed]) {
+				    printf("truncated packed header at %u of %d\n",offset,rxringpayload[rxringconsumed]);
+				    break;
+				}
+				ihl = ptr[offset] & 0xF;
 				if (ihl != 5) {
 				    printf("Non-standard IHL %d\n", ihl);
 				}
-				total = ntohs(*(uint16_t*)(ptr+offset+2)); /* 2 byte - IP offset to total len */
-				
-				if ((int)(offset+total)>rxringpayload[rxringconsumed]) {
+				/* Unaligned once a preceding packet had an odd size */
+				memcpy(&total, ptr+offset+2, sizeof(total));
+				total = ntohs(total);
+
+				if (total < 20 || (int)(offset+total)>rxringpayload[rxringconsumed]) {
 				    printf("invalid offset! %d > %d IP size %d\n",(offset+total),rxringpayload[rxringconsumed],total);
-				    break;
-				}
-				if (!total) {
-				    printf("Loop error\n");
 				    break;
 				}
 				pthread_mutex_lock(&raw_mutex);
@@ -355,11 +361,6 @@ static void *thr_rx(void *threadid)
 				/* This is correct, finished processing packed data */
 				if ((int)offset == rxringpayload[rxringconsumed])
 				    break;
-				if ((int)offset > rxringpayload[rxringconsumed]) {
-				    printf("invalid offset! %d+%d > %d\n",offset,total,rxringpayload[rxringconsumed]);
-				    break;
-				}
-				
 			    }
 			} else {
 			    pthread_mutex_lock(&raw_mutex);
