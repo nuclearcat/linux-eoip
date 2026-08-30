@@ -48,6 +48,7 @@
 #include <signal.h>
 #include <assert.h>
 #include <pthread.h>
+#include <sched.h>
 #include "minIni.h"
 #include <getopt.h>
 
@@ -146,6 +147,80 @@ static void xor (unsigned char *mem, unsigned int size) {
 	*((unsigned char *)mem+i) ^= xormask;
     }
 }
+
+/* ---------------------------------------------------------------------------
+ * CPU placement. The set a process may run on is not necessarily every CPU on
+ * the box - a cpuset, taskset or systemd CPUAffinity can restrict it - so ask
+ * for the affinity mask rather than the CPU count, and only ever pin to a CPU
+ * that is actually in it.
+ * ------------------------------------------------------------------------ */
+#ifdef HAVE_PTHREAD_SETAFFINITY_NP
+/* Probed on first use, so this cannot depend on being called early enough */
+static int cpu_allowed_count(void)
+{
+    static int cpu_count;		/* CPUs we may use, 0 until probed */
+    cpu_set_t set;
+
+    if (!cpu_count && sched_getaffinity(0, sizeof(set), &set) == 0)
+	cpu_count = CPU_COUNT(&set);
+    return cpu_count;
+}
+
+/* The n-th CPU this process is allowed to use, or -1 if there is none */
+static int allowed_cpu(int n)
+{
+    cpu_set_t set;
+    int i;
+
+    if (sched_getaffinity(0, sizeof(set), &set) != 0)
+	return -1;
+    for (i = 0; i < CPU_SETSIZE; i++)
+	if (CPU_ISSET(i, &set) && n-- == 0)
+	    return i;
+    return -1;
+}
+
+/* The RX thread serves every tunnel, so it keeps the first CPU to itself when
+   there is more than one to go around. The TX threads share what is left,
+   round robin, so more tunnels than CPUs is normal rather than an error. */
+static int rx_cpu(void)
+{
+    return allowed_cpu(0);
+}
+
+static int tx_cpu(int n)
+{
+    int count = cpu_allowed_count();
+
+    if (count <= 1)
+	return allowed_cpu(0);
+    return allowed_cpu(1 + (n % (count - 1)));
+}
+
+/* Best effort: a failure is reported and the thread just stays unpinned */
+static void pin_to_cpu(int cpu, const char *what, int id)
+{
+    cpu_set_t set;
+    int ret;
+
+    if (cpu < 0)
+	return;
+    CPU_ZERO(&set);
+    CPU_SET(cpu, &set);
+    ret = pthread_setaffinity_np(pthread_self(), sizeof(set), &set);
+    if (ret)
+	printf("%s thread(ID %d) affinity error %d\n", what, id, ret);
+    else
+	printf("%s thread(ID %d) set to cpu %d\n", what, id, cpu);
+}
+#else
+static int rx_cpu(void) { return -1; }
+static int tx_cpu(int n) { (void)n; return -1; }
+static void pin_to_cpu(int cpu, const char *what, int id)
+{
+    (void)cpu; (void)what; (void)id;
+}
+#endif
 
 /* Only a configured peer may inject into a tunnel */
 static int peer_allowed(const Tunnel *tunnel, in_addr_t src)
@@ -264,21 +339,7 @@ static void *thr_rx(void *threadid)
     }
 #endif
     
-#ifdef HAVE_PTHREAD_SETAFFINITY_NP
-    cpu_set_t cpuset;
-    int cpu=0;
-    pthread_t thread = pthread_self();
-
-
-    CPU_ZERO(&cpuset);
-    CPU_SET(cpu, &cpuset);
-
-    ret = pthread_setaffinity_np(thread, sizeof(cpu_set_t), &cpuset);
-    if (ret)
-	printf("Affinity error %d\n",ret);
-    else
-	printf("RX thread cpu %d\n",cpu);
-#endif
+    pin_to_cpu(rx_cpu(), "RX", 0);
 #ifdef HAVE_LIBLZO2
     ret = lzo_init();    
     if (ret != LZO_E_OK) {
@@ -494,19 +555,8 @@ static void *thr_tx(void *threadid)
     unsigned int packdelay = thr_tx_data->packdelay;
     int maxpacked = thr_tx_data->maxpacked;
     int multiplier = 1;
-#ifdef HAVE_PTHREAD_SETAFFINITY_NP
-    int cpu = thr_tx_data->cpu;
-    cpu_set_t cpuset;
-    pthread_t thread = pthread_self();
-
-    CPU_ZERO(&cpuset);
-    CPU_SET(cpu, &cpuset);
-    ret = pthread_setaffinity_np(thread, sizeof(cpu_set_t), &cpuset);
-    if (ret)
-	printf("Affinity error %d\n",ret);
-    else
-	printf("TX thread(ID %d) set to cpu %d packdelay %dms\n", tunnel->id, cpu, packdelay/1000);
-#endif
+    pin_to_cpu(thr_tx_data->cpu, "TX", tunnel->id);
+    printf("TX thread(ID %d) packdelay %dms\n", tunnel->id, packdelay/1000);
 
 
 #ifdef HAVE_LIBLZO2
@@ -833,7 +883,7 @@ int main(int argc,char **argv)
 	    exit(-1);
 	}
         tunnel->thr_tx_data->tunnel = tunnel;
-	tunnel->thr_tx_data->cpu = sn+1;
+	tunnel->thr_tx_data->cpu = tx_cpu(sn);
 	tunnel->thr_tx_data->packdelay = (int)ini_getl(section, "delay", 1000, configname);
 	tunnel->thr_tx_data->maxpacked = (int)ini_getl(section, "maxpacked", 1500, configname);
 	tunnel->thr_tx_data->compression = (int)ini_getl(section, "compression", 0, configname);

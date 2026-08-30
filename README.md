@@ -154,9 +154,13 @@ WireGuard.
 
 ## Notes and limits
 
-- The receive thread is pinned to CPU 0 and transmit thread *n* to CPU *n*+1.
-  On a machine with fewer CPUs than tunnels this fails harmlessly: an
-  "Affinity error" line is printed and the thread runs unpinned.
+- Threads are pinned to cores. The receive thread serves every tunnel, so it
+  keeps the first available CPU to itself; the transmit threads share the rest
+  round-robin, so more tunnels than CPUs is normal rather than an error. The
+  placement follows the process's affinity mask, so running under `taskset`, a
+  cpuset or systemd's `CPUAffinity` confines the daemon to the CPUs you gave
+  it. On a single CPU everything shares it. Where the platform has no
+  `pthread_setaffinity_np`, the threads simply run unpinned.
 - `SIGTERM` and `SIGINT` close the tunnel devices and exit.
 - Both daemons fork into the background after creating their interfaces, so a
   script can configure the interfaces as soon as the process returns.
