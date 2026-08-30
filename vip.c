@@ -736,8 +736,17 @@ int main(int argc,char **argv)
 	tunnel->thr_tx_data->maxpacked = (int)ini_getl(section, "maxpacked", 1500, configname);
 	tunnel->thr_tx_data->compression = (int)ini_getl(section, "compression", 0, configname);
         tunnel->thr_tx_data->raw_socket = thr_rx_data.raw_socket;
-	if (tunnel->thr_tx_data->maxpacked > 1500) {
-	    //tunnel->thr_tx_data->maxpacked = 1500;
+	if (tunnel->thr_tx_data->maxpacked < 1) {
+	    warnx("maxpacked for %s must be positive", section);
+	    exit(-1);
+	}
+	/* The packing loop accumulates up to maxpacked*2 bytes into a buffer
+	   of MAXPAYLOAD, so anything above half of that overflows it */
+	if (tunnel->thr_tx_data->maxpacked > MAXPAYLOAD/2) {
+	    printf("Max packed data %d too large, clamped to %d\n",
+		   tunnel->thr_tx_data->maxpacked, MAXPAYLOAD/2);
+	    tunnel->thr_tx_data->maxpacked = MAXPAYLOAD/2;
+	} else if (tunnel->thr_tx_data->maxpacked > 1500) {
 	    printf("Max packed data not recommended > 1500\n");
 	}
 	printf("Name %s ID %d Delay %d maxpacked %d compression %d\n",tunnel->name,tunnel->id,tunnel->thr_tx_data->packdelay,tunnel->thr_tx_data->maxpacked,tunnel->thr_tx_data->compression);
