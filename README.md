@@ -27,6 +27,27 @@ cannot compress or decompress.
 |---|---|---|
 | `WITH_LZO` | `AUTO` | `AUTO` uses liblzo2 if present, `ON` fails configuration when it is missing, `OFF` builds without it. |
 | `CMAKE_BUILD_TYPE` | `Release` | Standard CMake build types. |
+| `RING_SLOTS` | `64` | Receive ring depth, in slots of one max-size payload each. |
+| `TX_BATCH` | `16` | `eoip` transmit batch depth, per tunnel. |
+| `EOIP_MAXPAYLOAD` | `2048` | `eoip`: largest tunnelled payload, bytes. |
+| `VIP_MAXPAYLOAD` | `65536` | `vip`: largest tunnelled payload, bytes. |
+
+`recvmmsg`, `sendmmsg` and CPU affinity are probed for and used when present,
+with working fallbacks when they are not, so no configuration is needed for
+those.
+
+### Sizing for a small target
+
+The defaults assume a machine with memory to spare. `RING_SLOTS` multiplied by
+the payload size is a single allocation made once, and `TX_BATCH` multiplied by
+the payload size is allocated *per tunnel*, so on a router they are the two to
+turn down. The configure output prints what you chose:
+
+    cmake -B build -DRING_SLOTS=8 -DTX_BATCH=4 -DVIP_MAXPAYLOAD=2048
+    ...
+    -- Receive ring: eoip 16KB, vip 16KB
+
+At the defaults `vip` reserves 4MB for its receive ring alone.
 
 So to guarantee a build with compression support:
 

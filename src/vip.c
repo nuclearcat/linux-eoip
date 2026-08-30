@@ -16,8 +16,9 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.*
 */
-#ifndef __UCLIBC__
-#define _GNU_SOURCE 
+/* Guarded so a build system that already passes -D_GNU_SOURCE is fine */
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
 #endif
 #include "config.h"
 #include <stdio.h>
@@ -69,11 +70,9 @@ const unsigned char xormask = 0x55; //3847611839 in hex.
    If you choice performance - more vectors, to avoid expensive context switches
 */
 
-#define MAXPAYLOAD (65536)
-//#define MAXPACKED (1500-200)
-//#define MAXPACKED (1700)
-//#define PREALLOCBUF 32
-#define MAXRINGBUF  64
+/* Sizing comes from the build, see the CMake cache variables */
+#define MAXPAYLOAD (VIP_MAXPAYLOAD)
+#define MAXRINGBUF (RING_SLOTS)
 
 #define BIT_COMPRESSED 		(1 << 0)
 #define BIT_PACKED 		(1 << 1)
@@ -265,7 +264,7 @@ static void *thr_rx(void *threadid)
     }
 #endif
     
-#ifndef __UCLIBC__
+#ifdef HAVE_PTHREAD_SETAFFINITY_NP
     cpu_set_t cpuset;
     int cpu=0;
     pthread_t thread = pthread_self();
@@ -495,7 +494,7 @@ static void *thr_tx(void *threadid)
     unsigned int packdelay = thr_tx_data->packdelay;
     int maxpacked = thr_tx_data->maxpacked;
     int multiplier = 1;
-#ifndef __UCLIBC__
+#ifdef HAVE_PTHREAD_SETAFFINITY_NP
     int cpu = thr_tx_data->cpu;
     cpu_set_t cpuset;
     pthread_t thread = pthread_self();

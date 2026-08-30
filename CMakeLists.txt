@@ -48,14 +48,11 @@ endif()
 
 # ---------------------------------------------------------------------------
 # recvmmsg fills the whole receive ring in one syscall instead of one per
-# packet. Probe it the way the sources actually compile: they define
-# _GNU_SOURCE themselves, except on uClibc, where recvmmsg stays hidden.
+# packet.
 # ---------------------------------------------------------------------------
 include(CheckCSourceCompiles)
 check_c_source_compiles("
-#ifndef __UCLIBC__
 #define _GNU_SOURCE
-#endif
 #include <sys/socket.h>
 #include <sys/uio.h>
 int main(void) {
@@ -74,9 +71,7 @@ endif()
 # still batches its reads and falls back to one sendmsg per packet, which
 # takes the same msghdr, so only the send call differs.
 check_c_source_compiles("
-#ifndef __UCLIBC__
 #define _GNU_SOURCE
-#endif
 #include <sys/socket.h>
 #include <sys/uio.h>
 int main(void) {
@@ -90,6 +85,46 @@ if(HAVE_SENDMMSG)
 else()
     message(STATUS "Batched send: unavailable, falling back to sendmsg")
 endif()
+
+# CPU affinity is optional: the daemons pin the receive thread to CPU 0 and
+# each transmit thread to one core, and run unpinned where that is missing.
+check_c_source_compiles("
+#define _GNU_SOURCE
+#include <pthread.h>
+int main(void) {
+    cpu_set_t set;
+    CPU_ZERO(&set);
+    CPU_SET(0, &set);
+    return pthread_setaffinity_np(pthread_self(), sizeof(set), &set);
+}
+" HAVE_PTHREAD_SETAFFINITY_NP)
+
+if(HAVE_PTHREAD_SETAFFINITY_NP)
+    message(STATUS "CPU affinity: available")
+else()
+    message(STATUS "CPU affinity: unavailable, threads run unpinned")
+endif()
+
+# ---------------------------------------------------------------------------
+# Buffer sizing. These are memory against throughput tradeoffs for the device
+# being targeted, not properties of the libc, so set them rather than letting
+# anything guess. Defaults suit a machine with memory to spare; shrink
+# RING_SLOTS and TX_BATCH first on a small embedded target, they dominate.
+# ---------------------------------------------------------------------------
+set(EOIP_MAXPAYLOAD 2048  CACHE STRING "eoip: largest tunnelled payload, bytes")
+set(VIP_MAXPAYLOAD  65536 CACHE STRING "vip: largest tunnelled payload, bytes")
+set(RING_SLOTS      64    CACHE STRING "Receive ring depth, slots of MAXPAYLOAD each")
+set(TX_BATCH        16    CACHE STRING "eoip: transmit batch depth, per tunnel")
+
+foreach(var EOIP_MAXPAYLOAD VIP_MAXPAYLOAD RING_SLOTS TX_BATCH)
+    if(NOT "${${var}}" MATCHES "^[1-9][0-9]*$")
+        message(FATAL_ERROR "${var} must be a positive integer, got \"${${var}}\"")
+    endif()
+endforeach()
+
+math(EXPR _eoip_ring "${EOIP_MAXPAYLOAD} * ${RING_SLOTS} / 1024")
+math(EXPR _vip_ring  "${VIP_MAXPAYLOAD} * ${RING_SLOTS} / 1024")
+message(STATUS "Receive ring: eoip ${_eoip_ring}KB, vip ${_vip_ring}KB")
 
 find_package(Threads REQUIRED)
 

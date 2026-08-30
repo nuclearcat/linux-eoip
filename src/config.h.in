@@ -15,4 +15,14 @@
    single syscall rather than one sendto per packet */
 #cmakedefine HAVE_SENDMMSG 1
 
+/* Defined when the threads can be pinned to a core */
+#cmakedefine HAVE_PTHREAD_SETAFFINITY_NP 1
+
+/* Buffer sizing, from the CMake cache variables of the same name. These are
+   memory against throughput tradeoffs for the target device. */
+#define EOIP_MAXPAYLOAD @EOIP_MAXPAYLOAD@
+#define VIP_MAXPAYLOAD  @VIP_MAXPAYLOAD@
+#define RING_SLOTS      @RING_SLOTS@
+#define TX_BATCH        @TX_BATCH@
+
 #endif

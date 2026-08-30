@@ -15,8 +15,9 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.*
 */
-#ifndef __UCLIBC__
-#define _GNU_SOURCE 
+/* Guarded so a build system that already passes -D_GNU_SOURCE is fine */
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
 #endif
 #include <stdio.h>
 #include <stdlib.h>
@@ -59,24 +60,15 @@
 */
 
 #define LINUX_THREAD_STACK_SIZE (PTHREAD_STACK_MIN * 2)
-#ifdef __UCLIBC__
-#define MAXPAYLOAD (2048)
-#define PREALLOCBUF 4
-#define MAXRINGBUF  4
-#else
-#define MAXPAYLOAD (2048)
-#define PREALLOCBUF 32
-#define MAXRINGBUF  64
-#endif
+
+/* Sizing comes from the build, see the CMake cache variables */
+#define MAXPAYLOAD  (EOIP_MAXPAYLOAD)
+#define MAXRINGBUF  (RING_SLOTS)
 
 /* Transmit batch depth. Each slot costs MAXPAYLOAD of buffer per tunnel,
-   so this is deliberately smaller than MAXRINGBUF: most of the syscall
-   saving arrives by 8-16 and the memory is per TX thread. */
-#ifdef __UCLIBC__
-#define TXBATCH 4
-#else
-#define TXBATCH 16
-#endif
+   so it is usually smaller than MAXRINGBUF: most of the syscall saving
+   arrives by 8-16 and the memory is per TX thread. */
+#define TXBATCH (TX_BATCH)
 
 #define sizearray(a)  (sizeof(a) / sizeof((a)[0]))
 
@@ -88,9 +80,7 @@ typedef struct {
     char		name[IFNAMSIZ];
     int			dynamic;
     int			warned;
-#ifndef __UCLIBC__
     int			cpu;
-#endif
 }  Tunnel;
 
 struct thr_rx {
@@ -99,9 +89,7 @@ struct thr_rx {
 
 struct thr_tx {
     int			raw_socket;
-#ifndef __UCLIBC__
     int			cpu;
-#endif
     Tunnel		*tunnel;
 };
 
@@ -208,7 +196,7 @@ static void *thr_rx(void *threadid)
     Tunnel *tunnel;
     fd_set rfds;
 
-#ifndef __UCLIBC__
+#ifdef HAVE_PTHREAD_SETAFFINITY_NP
     cpu_set_t cpuset;
     pthread_t thread = pthread_self();
     int cpu=0;
@@ -288,7 +276,6 @@ static void *thr_rx(void *threadid)
 		    rxringpayload[rxringbufconsumed] < hlen + (int)sizeof(struct gre_hdr))
 			continue;
 		ghdr = (struct gre_hdr*)(ptr+hlen);
-		ret = 0;
 		/* Linear, and deliberately left that way. Measured with 400
 		   tunnels and 200000 packets: targeting the id stored last in
 		   the array cost the same 21 CPU ticks as targeting the id
@@ -323,6 +310,10 @@ static void *thr_rx(void *threadid)
 			}
 			ret = write(tunnel->fd, ptr + hlen + sizeof(struct gre_hdr),
 				    rxringpayload[rxringbufconsumed] - hlen - (int)sizeof(struct gre_hdr));
+			/* Captured only because write() is warn_unused_result: a
+			   full tap queue returns EAGAIN routinely under load, and
+			   logging that would flood exactly when it hurts most. */
+			(void)ret;
 		        break;
 		    }
 		}
@@ -339,14 +330,15 @@ static void *thr_tx(void *threadid)
     Tunnel *tunnel = thr_tx_data->tunnel;
     int fd = tunnel->fd;
     int raw_socket = thr_tx_data->raw_socket;
-    int payloadsz, ret, i, n;
+    int payloadsz, i, n;
     unsigned char *slab;		/* TXBATCH payload buffers */
     struct gre_hdr *ghdrs;		/* one GRE header per slot */
     struct mmsghdr *msgs;
     struct iovec *iov;			/* two per slot: header, then payload */
     fd_set rfds;
-#ifndef __UCLIBC__
+#ifdef HAVE_PTHREAD_SETAFFINITY_NP
     int cpu = thr_tx_data->cpu;
+    int ret;
     cpu_set_t cpuset;
     pthread_t thread = pthread_self();
 
@@ -609,9 +601,7 @@ int main(int argc, char **argv)
 	    exit(-1);
 	}
 	thr_tx_data->tunnel = tunnel;
-#ifndef __UCLIBC__
 	thr_tx_data->cpu = i+1;
-#endif
 	thr_tx_data->raw_socket = thr_rx_data.raw_socket;
 	rc = pthread_create(&threads[i+1], &attr, thr_tx, (void *)thr_tx_data);
 	if (rc) {
