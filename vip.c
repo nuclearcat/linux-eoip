@@ -266,7 +266,8 @@ static void *thr_rx(void *threadid)
 
 		xor(rxringbufptr[rxringbufused], rxringpayload[rxringbufused]);
 
-		if (rxringpayload[rxringbufused] >= 2)
+		/* 20 byte IP header + 2 byte VIP header must be present */
+		if (rxringpayload[rxringbufused] >= 22)
 		    rxringbufused++;
 	    }
 
