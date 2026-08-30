@@ -242,10 +242,8 @@ static void *thr_rx(void *threadid)
 		}
 		rxringbufconsumed++;
 	    } while (rxringbufconsumed < rxringbufused);
-	    rxringbufused -= rxringbufconsumed;
-	    if (rxringbufused) {
-		memmove(&rxringpayload[0], &rxringpayload[rxringbufconsumed], rxringbufused);
-	    }
+	    /* The consume loop above always drains the ring */
+	    rxringbufused = 0;
     }
     return(NULL);
 }
