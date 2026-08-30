@@ -99,6 +99,7 @@ typedef struct
    struct ifreq		ifr;
    char 		name[IFNAMSIZ];
    struct thr_tx 	*thr_tx_data;
+   int			warned;
 }  Tunnel;
 
 struct thr_rx
@@ -320,9 +321,8 @@ static void *thr_rx(void *threadid)
 		    if (ptr[hlen] == (unsigned char )(tunnel->id) )
 		    {
 			if (!peer_allowed(tunnel, saddr[rxringconsumed].sin_addr.s_addr)) {
-			    static int warned;
-			    if (!warned) {
-				warned = 1;
+			    if (!tunnel->warned) {
+				tunnel->warned = 1;
 				printf("Dropping packet for tunnel %s from a source other than dst\n",
 				       tunnel->name);
 			    }

@@ -77,6 +77,7 @@ typedef struct {
     struct ifreq	ifr;
     char		name[IFNAMSIZ];
     int			dynamic;
+    int			warned;
 #ifndef __UCLIBC__
     int			cpu;
 #endif
@@ -243,9 +244,8 @@ static void *thr_rx(void *threadid)
 			    }
 			} else if (saddr[rxringbufconsumed].sin_addr.s_addr != tunnel->daddr.sin_addr.s_addr) {
 			    /* A static tunnel accepts only its configured peer */
-			    static int warned;
-			    if (!warned) {
-				warned = 1;
+			    if (!tunnel->warned) {
+				tunnel->warned = 1;
 				printf("Dropping packet for tunnel %s from a source other than dst\n",
 				       tunnel->name);
 			    }
