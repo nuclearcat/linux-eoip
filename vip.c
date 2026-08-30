@@ -201,15 +201,18 @@ static void *thr_rx(void *threadid)
     struct thr_rx *thr_rx_data = (struct thr_rx*)threadid;
     static Tunnel *tunnel;
     int raw_socket = thr_rx_data->raw_socket;
+#ifdef HAVE_LIBLZO2
     static unsigned char *decompressed = NULL;
-    static unsigned int decompressedsz;
+    static lzo_uint decompressedsz;
+#endif
     static fd_set rfds;
 
-    /* 2-byte header of VIP, rest is payload */
+#ifdef HAVE_LIBLZO2
     if (posix_memalign((void*)&decompressed, 64, MAXPAYLOAD)) {
 	printf("memalign failed\n");
 	pthread_exit(0);
     }
+#endif
     
 #ifndef __UCLIBC__
     cpu_set_t cpuset;
@@ -285,7 +288,7 @@ static void *thr_rx(void *threadid)
 			    /* Output is copied back to ptr+22 inside a MAXPAYLOAD
 			       slot, so it must never exceed MAXPAYLOAD-22 */
 			    decompressedsz = MAXPAYLOAD - 22;
-			    if (lzo1x_decompress_safe(ptr+22,rxringpayload[rxringconsumed]-22,decompressed,(lzo_uintp)&decompressedsz,NULL) == LZO_E_OK) {
+			    if (lzo1x_decompress_safe(ptr+22,rxringpayload[rxringconsumed]-22,decompressed,&decompressedsz,NULL) == LZO_E_OK) {
 				if (decompressed == NULL) {
 				    printf("Please report to developer about this bug\n");
 				    //pthread_exit(1);
@@ -394,7 +397,9 @@ static void *thr_tx(void *threadid)
     lzo_voidp wrkmem;
 #endif
     int payloadsz;
-    int compressedsz;
+#ifdef HAVE_LIBLZO2
+    lzo_uint compressedsz;
+#endif
 //    struct sockaddr_in daddr;
     int ret;
     fd_set rfds;
@@ -502,7 +507,7 @@ static void *thr_tx(void *threadid)
 #ifdef HAVE_LIBLZO2
 	if (compression) {
 	    compressedsz = MAXPAYLOAD*2;
-	    ret = lzo1x_1_compress(payloadptr, payloadsz, compressed, (lzo_uintp)&compressedsz, wrkmem);
+	    ret = lzo1x_1_compress(payloadptr, payloadsz, compressed, &compressedsz, wrkmem);
 	    /* Not thread safe! TODO */
 	    if (verbose) {
 		counter = compressedsz;
@@ -527,8 +532,6 @@ static void *thr_tx(void *threadid)
 		payloadsz = compressedsz;
 	    }
 	}
-#else
-	compressedsz = 0;
 #endif
 	xor(ip, payloadsz+2);
 
