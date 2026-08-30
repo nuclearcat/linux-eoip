@@ -307,8 +307,12 @@ static void *thr_rx(void *threadid)
 #else
 
 			if (ptr[21] & BIT_COMPRESSED) {
-			    printf("Can't decompress. TODO\n");
-			    exit(0);
+			    static int warned;
+			    if (!warned) {
+				warned = 1;
+				printf("Compressed packet received but this build has no liblzo2, dropping\n");
+			    }
+			    break;
 			}
 #endif
 
