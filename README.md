@@ -41,6 +41,11 @@ Both read an INI file. Each section defines one tunnel, and the section name
 becomes the interface name, so it must be a valid interface name: shorter
 than 16 characters. A config with no sections is an error.
 
+Ready-made samples are in `examples/`; copy one to the default path to get
+started:
+
+    sudo cp examples/eoip.cfg /etc/eoip.cfg
+
 ### eoip
 
     eoip [configfile [bindip]]
@@ -137,6 +142,16 @@ WireGuard.
 - Payloads larger than `MAXPAYLOAD` (2048 bytes in `eoip`, 65536 in `vip`) are
   not handled; see the comment at the top of each source file for the
   space-versus-throughput tradeoff behind those numbers.
+
+## Repository layout
+
+    CMakeLists.txt          top-level build, option handling, liblzo2 detection
+    src/                    the two daemons and the config.h template
+    third_party/minini/     vendored INI parser (ITB CompuPhase, Apache-2.0)
+    examples/               sample configs for both daemons
+
+`third_party/minini` is kept separate because it is not ours and carries a
+different license from the daemons; see the header in `minIni.c`.
 
 ## License
 

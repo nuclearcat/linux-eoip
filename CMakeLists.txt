@@ -46,33 +46,13 @@ else()
     message(STATUS "LZO compression: disabled (WITH_LZO=OFF)")
 endif()
 
-configure_file(config.h.in config.h @ONLY)
-
 find_package(Threads REQUIRED)
 
-# Must precede the targets below: add_compile_options only affects
+# Must precede the subdirectories: add_compile_options only affects
 # targets created after the call.
 if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
     add_compile_options(-Wall -Wextra)
 endif()
 
-# ---------------------------------------------------------------------------
-# Targets
-# ---------------------------------------------------------------------------
-add_library(minini OBJECT minIni.c)
-target_include_directories(minini PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
-
-foreach(daemon eoip vip)
-    add_executable(${daemon} ${daemon}.c $<TARGET_OBJECTS:minini>)
-    target_include_directories(${daemon} PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}"
-        "${CMAKE_CURRENT_BINARY_DIR}")   # for the generated config.h
-    target_link_libraries(${daemon} PRIVATE Threads::Threads)
-endforeach()
-
-if(HAVE_LIBLZO2)
-    target_include_directories(vip PRIVATE "${LZO_INCLUDE_DIR}")
-    target_link_libraries(vip PRIVATE "${LZO_LIBRARY}")
-endif()
-
-install(TARGETS eoip vip RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+add_subdirectory(third_party/minini)
+add_subdirectory(src)
