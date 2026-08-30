@@ -408,14 +408,14 @@ int main(int argc, char **argv)
 
 	if (!inet_pton(AF_INET, strbuf, (struct in_addr *)&tunnel->daddr.sin_addr.s_addr))
 	{
-	    warn("Destination \"%s\" is not correct\n", strbuf);
+	    warnx("Destination \"%s\" is not correct", strbuf);
 	    exit(-1);
 	}
 	memset(tunnel->daddr.sin_zero, 0x0, sizeof(tunnel->daddr.sin_zero));
 	tunnel->id = (int)ini_getl(section, "id", 0, configname);
 	/* The id travels in a 16 bit field, so 65535 is the largest usable */
 	if (tunnel->id == 0 || tunnel->id > 65535) {
-	    warn("ID of \"%d\" is not correct\n", tunnel->id);
+	    warnx("ID of \"%d\" is not correct", tunnel->id);
 	    exit(-1);
 	}
 	tunnel->dynamic = (int)ini_getl(section, "dynamic", 0, configname);

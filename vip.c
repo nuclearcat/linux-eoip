@@ -749,7 +749,7 @@ int main(int argc,char **argv)
 
 	tunnel->id = (int)ini_getl(section,"id",0,configname);
 	if (tunnel->id == 0 || tunnel->id > 255) {
-	    warn("ID of \"%d\" is not correct\n", tunnel->id);
+	    warnx("ID of \"%d\" is not correct", tunnel->id);
 	    exit(-1);
 	}
 	/* Allocate for each thread */
