@@ -56,7 +56,7 @@ process writes its pid to `/var/run/eoip-<configfile basename>`.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `id` | — | Tunnel id, 1 to 65535. Must match the remote side. |
+| `id` | — | Tunnel id, 1 to 65535. Must match the remote side, and be unique within this config. |
 | `dst` | — | Remote peer address. Required unless `dynamic=1`. |
 | `dynamic` | `0` | Learn the peer address from incoming packets instead of pinning it. See [Security](#security). |
 
@@ -82,7 +82,7 @@ process writes its pid to `/var/run/eoip-<configfile basename>`.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `id` | — | Tunnel id, 1 to 255. Must match the remote side. |
+| `id` | — | Tunnel id, 1 to 255. Must match the remote side, and be unique within this config. |
 | `dst` | — | Remote peer address. At least one destination is required. |
 | `dst1`, `dst2` | — | Additional peers. Outgoing packets are sent to each in turn, round-robin. |
 | `delay` | `1000` | Microseconds to wait for further packets before sending, so several small packets can travel in one datagram. |

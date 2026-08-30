@@ -172,6 +172,24 @@ static void term_handler(int s)
     _exit(0);
 }
 
+/* Two tunnels sharing an id cannot be told apart on the wire: the receive
+   path matches whichever comes first in the array and the other never sees
+   a packet. Startup only, so the quadratic walk costs nothing. */
+static void check_unique_ids(void)
+{
+    int i, j;
+
+    for (i = 1; i < numtunnels; i++) {
+	for (j = 0; j < i; j++) {
+	    if (tunnels[j].id == tunnels[i].id) {
+		warnx("Tunnels %s and %s share id %d",
+		      tunnels[j].name, tunnels[i].name, tunnels[i].id);
+		exit(-1);
+	    }
+	}
+    }
+}
+
 static int open_tun(Tunnel *tunnel)
 {
     int fd;
@@ -836,6 +854,8 @@ int main(int argc,char **argv)
 	}
 	printf("Name %s ID %d Delay %d maxpacked %d compression %d\n",tunnel->name,tunnel->id,tunnel->thr_tx_data->packdelay,tunnel->thr_tx_data->maxpacked,tunnel->thr_tx_data->compression);
      }
+
+    check_unique_ids();
 
     fcntl(thr_rx_data.raw_socket, F_SETFL, O_NONBLOCK);
 
