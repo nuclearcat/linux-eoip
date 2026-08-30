@@ -45,6 +45,7 @@
 #include <assert.h>
 #include <pthread.h>
 #include <limits.h>
+#include <libgen.h>
 #include <asm/byteorder.h>
 #include "minIni.h"
 #include "config.h"
@@ -315,6 +316,7 @@ int main(int argc, char **argv)
     void *status;
     FILE *mfd;
     char *pidfile;
+    char *cfgcopy;
 
 
     thr_rx_data.raw_socket = socket(PF_INET, SOCK_RAW, 47);
@@ -426,8 +428,12 @@ int main(int argc, char **argv)
     /* Fork after creating tunnels, useful for scripts */
     ret = daemon(1, 1);
 
-    if (asprintf(&pidfile,"/var/run/eoip-%s",basename(configname)) == -1)
+    /* POSIX basename() may modify its argument, so hand it a copy */
+    if ((cfgcopy = strdup(configname)) == NULL)
 	exit(1);
+    if (asprintf(&pidfile,"/var/run/eoip-%s",basename(cfgcopy)) == -1)
+	exit(1);
+    free(cfgcopy);
 
     mfd = fopen(pidfile, "w");
     if (mfd == NULL) {
