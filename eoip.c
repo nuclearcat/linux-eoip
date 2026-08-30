@@ -128,6 +128,7 @@ static int open_tun(Tunnel *tunnel) {
     if ( (tunnel->fd = open("/dev/net/tun", O_RDWR)) < 0)
     {
 	perror("open_tun: /dev/net/tun error");
+	close(fd);
 	return 1;
     }
 
@@ -141,6 +142,7 @@ static int open_tun(Tunnel *tunnel) {
 
     if (ioctl(tunnel->fd, TUNSETIFF, (void *)&tunnel->ifr) < 0) {
         perror("ioctl-1");
+        close(tunnel->fd);
         close(fd);
         return 1;
     }
@@ -150,6 +152,7 @@ static int open_tun(Tunnel *tunnel) {
 
     if (ioctl(fd, SIOCSIFFLAGS, (void *)&tunnel->ifr) < 0) {
         perror("ioctl-2");
+        close(tunnel->fd);
         close(fd);
         return 1;
     }
