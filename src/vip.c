@@ -88,7 +88,6 @@ __section__(".data.cacheline_aligned")))
 #endif /* __cacheline_aligned */
 #define __read_mostly __attribute__((__section__(".data.read_mostly")))
 
-pthread_mutex_t raw_mutex = PTHREAD_MUTEX_INITIALIZER;
 uint32_t verbose = 0;
 
 typedef struct
@@ -309,10 +308,7 @@ static void *thr_rx(void *threadid)
 	    for (i = 0; i < MAXRINGBUF; i++)
 		msgs[i].msg_hdr.msg_namelen = sizeof(saddr[0]);
 
-	    pthread_mutex_lock(&raw_mutex);
 	    ret = recvmmsg(raw_socket, msgs, MAXRINGBUF, MSG_DONTWAIT, NULL);
-	    pthread_mutex_unlock(&raw_mutex);
-
 	    if (ret <= 0)
 		continue;
 	    rxringbufused = ret;
@@ -321,10 +317,8 @@ static void *thr_rx(void *threadid)
 #else
 	    while (rxringbufused < MAXRINGBUF) {
 		saddr_size = sizeof(saddr[0]);
-		pthread_mutex_lock(&raw_mutex);
 		rxringpayload[rxringbufused] = recvfrom(raw_socket, rxringbufptr[rxringbufused], MAXPAYLOAD, 0,
 						       (struct sockaddr *)&saddr[rxringbufused], &saddr_size);
-		pthread_mutex_unlock(&raw_mutex);
 
 		if (rxringpayload[rxringbufused] < 0)
 		    break;
@@ -415,9 +409,7 @@ static void *thr_rx(void *threadid)
 				    printf("invalid offset! %d > %d IP size %d\n",(offset+total),rxringpayload[rxringconsumed],total);
 				    break;
 				}
-				pthread_mutex_lock(&raw_mutex);
 				ret = write(tunnel->fd,ptr+offset,total);
-				pthread_mutex_unlock(&raw_mutex);
 				if (ret<0) {
 				    printf("invalid offset! %d > %d IP size %d\n",(offset+total),rxringpayload[rxringconsumed],total);
 				    perror("tunnel write error #1: ");
@@ -431,9 +423,7 @@ static void *thr_rx(void *threadid)
 				    break;
 			    }
 			} else {
-			    pthread_mutex_lock(&raw_mutex);
 			    ret = write(tunnel->fd,ptr+payoff,rxringpayload[rxringconsumed]-payoff);
-			    pthread_mutex_unlock(&raw_mutex);
 			    
 			    if (ret<0)
 			        printf("tunnel write error #2\n");
@@ -530,9 +520,7 @@ static void *thr_tx(void *threadid)
 		continue;
 
 	    /* Read from tunnel */
-	    pthread_mutex_lock(&raw_mutex);
 	    payloadsz = read(fd, payloadptr, MAXPAYLOAD);
-	    pthread_mutex_unlock(&raw_mutex);
 
 	    if (payloadsz < 0)
 		continue;
@@ -622,12 +610,12 @@ static void *thr_tx(void *threadid)
 #endif
 	xor(ip, payloadsz+2);
 
-	pthread_mutex_lock(&raw_mutex);
+	/* Concurrent sendto() on a shared datagram socket is thread-safe:
+	   each call emits one packet. daddr_num is this thread's own. */
 	if(sendto(raw_socket, ip, payloadsz+2, 0,(struct sockaddr *)&tunnel->daddr[daddr_num], (socklen_t)sizeof(tunnel->daddr[0])) < 0)
 		perror("send() err");
 	daddr_num++;
 	daddr_num %= tunnel->daddr_cnt;
-	pthread_mutex_unlock(&raw_mutex);
     }
     return(NULL);
 }
