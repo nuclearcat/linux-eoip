@@ -192,20 +192,20 @@ static int open_tun(Tunnel *tunnel)
 
 static void *thr_rx(void *threadid)
 {
-    static unsigned char *rxringbufptr[MAXRINGBUF];
-    static int rxringpayload[MAXRINGBUF];
-    static unsigned char *rxringbuffer;
-    static int rxringbufused = 0, rxringconsumed;
-    static unsigned char *ptr;
-    static int i,ret,hlen,payoff;
+    unsigned char *rxringbufptr[MAXRINGBUF];
+    int rxringpayload[MAXRINGBUF];
+    unsigned char *rxringbuffer;
+    int rxringbufused = 0, rxringconsumed;
+    unsigned char *ptr;
+    int i,ret,hlen,payoff;
     struct thr_rx *thr_rx_data = (struct thr_rx*)threadid;
-    static Tunnel *tunnel;
+    Tunnel *tunnel;
     int raw_socket = thr_rx_data->raw_socket;
 #ifdef HAVE_LIBLZO2
-    static unsigned char *decompressed = NULL;
-    static lzo_uint decompressedsz;
+    unsigned char *decompressed = NULL;
+    lzo_uint decompressedsz;
 #endif
-    static fd_set rfds;
+    fd_set rfds;
 
 #ifdef HAVE_LIBLZO2
     if (posix_memalign((void*)&decompressed, 64, MAXPAYLOAD)) {
