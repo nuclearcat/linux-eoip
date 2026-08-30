@@ -24,6 +24,7 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <sys/socket.h>
+#include <sys/uio.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netinet/if_ether.h>
@@ -220,8 +221,13 @@ static void *thr_rx(void *threadid)
 {
     unsigned char *rxringbufptr[MAXRINGBUF];
     struct sockaddr_in saddr[MAXRINGBUF];
-    socklen_t saddr_size;
     int rxringpayload[MAXRINGBUF];
+#ifdef HAVE_RECVMMSG
+    struct mmsghdr *msgs;
+    struct iovec *iov;
+#else
+    socklen_t saddr_size;
+#endif
     unsigned char *rxringbuffer;
     int rxringbufused = 0, rxringconsumed;
     unsigned char *ptr;
@@ -272,9 +278,23 @@ static void *thr_rx(void *threadid)
 	perror("malloc()");
 	exit(1);
     }
-    /* Temporary code*/
+#ifdef HAVE_RECVMMSG
+    msgs = calloc(MAXRINGBUF, sizeof(*msgs));
+    iov = calloc(MAXRINGBUF, sizeof(*iov));
+    if (!msgs || !iov) {
+	perror("calloc()");
+	exit(1);
+    }
+#endif
     for (i=0;i<MAXRINGBUF;i++) {
 	rxringbufptr[i] = rxringbuffer+(MAXPAYLOAD*i);
+#ifdef HAVE_RECVMMSG
+	iov[i].iov_base = rxringbufptr[i];
+	iov[i].iov_len = MAXPAYLOAD;
+	msgs[i].msg_hdr.msg_iov = &iov[i];
+	msgs[i].msg_hdr.msg_iovlen = 1;
+	msgs[i].msg_hdr.msg_name = &saddr[i];
+#endif
     }
 
     while(1) {
@@ -283,6 +303,22 @@ static void *thr_rx(void *threadid)
            FD_SET(raw_socket, &rfds);
            ret = select(raw_socket+1, &rfds, NULL, NULL, NULL);
 
+#ifdef HAVE_RECVMMSG
+	    /* One syscall for the whole batch. msg_namelen is in/out, so it
+	       has to be restored before every call. */
+	    for (i = 0; i < MAXRINGBUF; i++)
+		msgs[i].msg_hdr.msg_namelen = sizeof(saddr[0]);
+
+	    pthread_mutex_lock(&raw_mutex);
+	    ret = recvmmsg(raw_socket, msgs, MAXRINGBUF, MSG_DONTWAIT, NULL);
+	    pthread_mutex_unlock(&raw_mutex);
+
+	    if (ret <= 0)
+		continue;
+	    rxringbufused = ret;
+	    for (i = 0; i < rxringbufused; i++)
+		rxringpayload[i] = msgs[i].msg_len;
+#else
 	    while (rxringbufused < MAXRINGBUF) {
 		saddr_size = sizeof(saddr[0]);
 		pthread_mutex_lock(&raw_mutex);
@@ -290,17 +326,15 @@ static void *thr_rx(void *threadid)
 						       (struct sockaddr *)&saddr[rxringbufused], &saddr_size);
 		pthread_mutex_unlock(&raw_mutex);
 
-		
 		if (rxringpayload[rxringbufused] < 0)
 		    break;
 
-		/* An IP header + a VIP header must be present */
-		if (rxringpayload[rxringbufused] >= 22)
-		    rxringbufused++;
+		rxringbufused++;
 	    }
 
 	    if (!rxringbufused)
 		continue;
+#endif
 
 	    for (rxringconsumed = 0; rxringconsumed < rxringbufused; rxringconsumed++) {
 		ptr = rxringbufptr[rxringconsumed];

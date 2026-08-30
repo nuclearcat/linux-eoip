@@ -46,6 +46,30 @@ else()
     message(STATUS "LZO compression: disabled (WITH_LZO=OFF)")
 endif()
 
+# ---------------------------------------------------------------------------
+# recvmmsg fills the whole receive ring in one syscall instead of one per
+# packet. Probe it the way the sources actually compile: they define
+# _GNU_SOURCE themselves, except on uClibc, where recvmmsg stays hidden.
+# ---------------------------------------------------------------------------
+include(CheckCSourceCompiles)
+check_c_source_compiles("
+#ifndef __UCLIBC__
+#define _GNU_SOURCE
+#endif
+#include <sys/socket.h>
+#include <sys/uio.h>
+int main(void) {
+    struct mmsghdr msgs[1];
+    return recvmmsg(0, msgs, 1, 0, (void *)0) < 0;
+}
+" HAVE_RECVMMSG)
+
+if(HAVE_RECVMMSG)
+    message(STATUS "Batched receive: recvmmsg")
+else()
+    message(STATUS "Batched receive: unavailable, falling back to recvfrom")
+endif()
+
 find_package(Threads REQUIRED)
 
 # Must precede the subdirectories: add_compile_options only affects

@@ -7,4 +7,8 @@
 /* Defined when vip is built against liblzo2 and can (de)compress payloads */
 #cmakedefine HAVE_LIBLZO2 1
 
+/* Defined when recvmmsg() is available, so the receive ring can be filled
+   with a single syscall per batch rather than one per packet */
+#cmakedefine HAVE_RECVMMSG 1
+
 #endif
