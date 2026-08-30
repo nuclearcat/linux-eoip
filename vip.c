@@ -197,7 +197,7 @@ static void *thr_rx(void *threadid)
     static unsigned char *rxringbuffer;
     static int rxringbufused = 0, rxringconsumed;
     static unsigned char *ptr;
-    static int i,ret;
+    static int i,ret,hlen,payoff;
     struct thr_rx *thr_rx_data = (struct thr_rx*)threadid;
     static Tunnel *tunnel;
     int raw_socket = thr_rx_data->raw_socket;
@@ -264,9 +264,7 @@ static void *thr_rx(void *threadid)
 		if (rxringpayload[rxringbufused] < 0)
 		    break;
 
-		xor(rxringbufptr[rxringbufused], rxringpayload[rxringbufused]);
-
-		/* 20 byte IP header + 2 byte VIP header must be present */
+		/* An IP header + a VIP header must be present */
 		if (rxringpayload[rxringbufused] >= 22)
 		    rxringbufused++;
 	    }
@@ -274,28 +272,36 @@ static void *thr_rx(void *threadid)
 	    if (!rxringbufused)
 		continue;
 
-	    rxringconsumed=0;
-	    do {
+	    for (rxringconsumed = 0; rxringconsumed < rxringbufused; rxringconsumed++) {
 		ptr = rxringbufptr[rxringconsumed];
+		/* A raw socket hands up the IP header too, and its length is
+		   not fixed at 20 once the sender or a router adds options */
+		hlen = (ptr[0] & 0x0F) * 4;
+		payoff = hlen + 2;	/* first byte after the VIP header */
+		if (hlen < 20 || rxringpayload[rxringconsumed] < payoff)
+		    continue;
+		/* TX only obfuscates from the VIP header on - the IP header is
+		   built by the kernel - so unmask exactly that range */
+		xor(ptr + hlen, rxringpayload[rxringconsumed] - hlen);
 		ret = 0;
 		/* TODO: Optimize search of tunnel id */
         	for(i=0;i<numtunnels;i++)
         	{
 		    tunnel=tunnels + i;
-		    if (ptr[20] == (unsigned char )(tunnel->id) )
+		    if (ptr[hlen] == (unsigned char )(tunnel->id) )
 		    {
 #ifdef HAVE_LIBLZO2
-			if (ptr[21] & BIT_COMPRESSED) {
-			    /* Output is copied back to ptr+22 inside a MAXPAYLOAD
-			       slot, so it must never exceed MAXPAYLOAD-22 */
-			    decompressedsz = MAXPAYLOAD - 22;
-			    if (lzo1x_decompress_safe(ptr+22,rxringpayload[rxringconsumed]-22,decompressed,&decompressedsz,NULL) == LZO_E_OK) {
+			if (ptr[hlen+1] & BIT_COMPRESSED) {
+			    /* Output is copied back to ptr+payoff inside a
+			       MAXPAYLOAD slot, so it must not exceed the rest */
+			    decompressedsz = MAXPAYLOAD - payoff;
+			    if (lzo1x_decompress_safe(ptr+payoff,rxringpayload[rxringconsumed]-payoff,decompressed,&decompressedsz,NULL) == LZO_E_OK) {
 				if (decompressed == NULL) {
 				    printf("Please report to developer about this bug\n");
 				    //pthread_exit(1);
 				}
-				memcpy(ptr+22,decompressed,decompressedsz);
-				rxringpayload[rxringconsumed] = decompressedsz + 22;
+				memcpy(ptr+payoff,decompressed,decompressedsz);
+				rxringpayload[rxringconsumed] = decompressedsz + payoff;
 			    } else {				
 				perror("lzo feeling bad about your packet ");\
 				break;
@@ -306,7 +312,7 @@ static void *thr_rx(void *threadid)
 
 #else
 
-			if (ptr[21] & BIT_COMPRESSED) {
+			if (ptr[hlen+1] & BIT_COMPRESSED) {
 			    static int warned;
 			    if (!warned) {
 				warned = 1;
@@ -316,8 +322,8 @@ static void *thr_rx(void *threadid)
 			}
 #endif
 
-			if ((ptr[21] & BIT_PACKED)) {
-			    unsigned int offset = 22; /* 20 IP header + 2 byte of tunnel id and bitfield */
+			if ((ptr[hlen+1] & BIT_PACKED)) {
+			    unsigned int offset = payoff; /* IP header + tunnel id and bitfield */
 			    unsigned short total;
 
 			    while(1) {
@@ -357,7 +363,7 @@ static void *thr_rx(void *threadid)
 			    }
 			} else {
 			    pthread_mutex_lock(&raw_mutex);
-			    ret = write(tunnel->fd,ptr+22,rxringpayload[rxringconsumed]-22);
+			    ret = write(tunnel->fd,ptr+payoff,rxringpayload[rxringconsumed]-payoff);
 			    pthread_mutex_unlock(&raw_mutex);
 			    
 			    if (ret<0)
@@ -367,8 +373,7 @@ static void *thr_rx(void *threadid)
 	    	    }
 		}
 
-		rxringconsumed++;
-	    } while (rxringconsumed < rxringbufused);
+	    }
 	    /* The consume loop above always drains the ring */
 	    rxringbufused = 0;
 
