@@ -395,8 +395,8 @@ int main(int argc, char **argv)
 	}
 	memset(tunnel->daddr.sin_zero, 0x0, sizeof(tunnel->daddr.sin_zero));
 	tunnel->id = (int)ini_getl(section, "id", 0, configname);
-	/* TODO: What is max value of tunnel? */
-	if (tunnel->id == 0 || tunnel->id > 65536) {
+	/* The id travels in a 16 bit field, so 65535 is the largest usable */
+	if (tunnel->id == 0 || tunnel->id > 65535) {
 	    warn("ID of \"%d\" is not correct\n", tunnel->id);
 	    exit(-1);
 	}
