@@ -408,10 +408,6 @@ int main(int argc, char **argv)
 	tunnel->dynamic = (int)ini_getl(section, "dynamic", 0, configname);
      }
 
-    if (thr_rx_data.raw_socket == -1) {
-	perror("raw socket error():");
-	exit(-1);
-    }
     fcntl(thr_rx_data.raw_socket, F_SETFL, O_NONBLOCK);
 
     for(i=0;i<numtunnels;i++)

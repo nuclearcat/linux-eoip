@@ -650,6 +650,13 @@ int main(int argc,char **argv)
     printf("(c) Denys Fedoryshchenko <nuclearcat@nuclearcat.com>\n");
 
     thr_rx_data.raw_socket = socket(PF_INET, SOCK_RAW, protocol);
+    if (thr_rx_data.raw_socket == -1) {
+	if (errno == EPERM)
+	    printf("You need root privileges or CAP_NET_RAW capability to run this program\n");
+	else
+	    perror("raw socket()");
+	return(1);
+    }
     if(setsockopt (thr_rx_data.raw_socket, SOL_SOCKET, SO_RCVBUF, &optval, sizeof (optval)))
 	perror("setsockopt(RCVBUF)");
     if(setsockopt (thr_rx_data.raw_socket, SOL_SOCKET, SO_SNDBUF, &optval, sizeof (optval)))
@@ -752,10 +759,6 @@ int main(int argc,char **argv)
 	printf("Name %s ID %d Delay %d maxpacked %d compression %d\n",tunnel->name,tunnel->id,tunnel->thr_tx_data->packdelay,tunnel->thr_tx_data->maxpacked,tunnel->thr_tx_data->compression);
      }
 
-    if (thr_rx_data.raw_socket == -1) {
-	perror("raw socket error():");
-	exit(-1);
-    }
     fcntl(thr_rx_data.raw_socket, F_SETFL, O_NONBLOCK);
 
     for(i=0;i<numtunnels;i++)
